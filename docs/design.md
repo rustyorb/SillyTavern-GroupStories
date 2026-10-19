@@ -1,0 +1,29 @@
+# Group Stories v0.1 design
+
+The approved direction is a separate installer-ready SillyTavern extension and repository, for contemporary human ensemble stories without a user character. The workspace has cast and per-character profiles, a central transcript, a collapsible scene/directing panel and a direction composer. Play, Pause, Next turn and generation status remain visible. Character cards retain their source scenario/greeting separately from the story-owned scene and opening.
+
+## Boundaries
+
+`core.js` owns pure session, audience and prompt rules. `engine.js` owns bounded/continuous generation and cancellation. `storage.js` owns browser persistence. `index.js` integrates SillyTavern and renders the workspace. `style.css` scopes the presentation. The repository contains runnable ES modules; no runtime library or build pipeline is needed.
+
+The host API is read through `SillyTavern.getContext()` after APP_READY. ConnectionManagerRequestService constructs the correct prompt format and sends each character's request using its own profile. The extension never changes main connection selection, writes native chats or modifies original cards. It initializes only its own namespaced settings, never calls the global extension loader.
+
+## State and concurrency
+
+An account-scoped IndexedDB stores active and archived sessions. Browser-wide Web Locks serialize mutations and enforce a single generation owner. BroadcastChannel distributes pause, status and state-refresh messages across views. The optional separate window is another view of the same host origin; it never creates its own independent run. A browser reload restores saved state with generation stopped.
+
+Every generated response is committed only if the story and its inputs still match the request snapshot. Cancellation marks the run stopped before aborting the provider and late responses are discarded. Provider errors stop with visible status. Generation reads current persisted state before every turn.
+
+## Privacy and knowledge
+
+Each event captures a recipient list. Public events go to present characters; private influence goes to one character. Each character's prompt filters all history by recipient before inclusion, and includes only that character's identity. The director sees public events only. No summaries or global recall are generated. Shared scene and opening are common foundational information; private facts belong in private directions. Original greetings are shown for reference, with an optional reviewed scene-adaptation request.
+
+## First-version scope
+
+Includes cast selection, per-character and director profiles, scene/opening editing, manual or automatic next speaker, narration/influence/speaking, presence, bounded/unlimited runs, pause, browser-local save/resume, backup import/export, public transcript export and shared-window controls.
+
+Deferred: private conversations between characters, automatic recall/summaries, World Info integration, Studio handoff and auditions. These need further product and privacy design and do not fit the first run engine.
+
+## Verification
+
+Use pure Node tests for audience isolation and run-state invariants. Use the local host at 127.0.0.1:8123 for runtime loading and desktop/mobile UI interactions. Simulated provider replies may verify the workflow but must never be described as real provider verification. Publishing the Git repository is a distinct final step.

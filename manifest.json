@@ -1,0 +1,12 @@
+{
+  "display_name": "Group Stories",
+  "loading_order": 50,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Group Stories contributors",
+  "version": "0.1.0",
+  "minimum_client_version": "1.19.0",
+  "auto_update": false
+}
