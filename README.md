@@ -1,12 +1,46 @@
 # Group Stories
 
-A separate SillyTavern workspace for grounded, contemporary ensemble stories. Choose a cast and a shared scene, then watch the characters interact without joining as a user character.
+**A cast. A scene. See what happens.**
+
+A separate SillyTavern workspace for grounded, contemporary ensemble stories. Choose the people, give them a starting situation, and watch their relationships develop—without having to join as a user character.
+
+You can step in as narrator, privately influence one character, or write a character's next contribution yourself. Let the story run for a few turns, pause to change direction, then pick it up again.
+
+[Install](#install) · [Start a story](#start-a-story) · [Privacy and limits](#privacy-model-and-limits) · [Verification](docs/verification.md)
+
+![Group Stories workspace inside SillyTavern](docs/images/workspace.png)
+
+*The workspace running in local SillyTavern 1.19. Cast and story areas start empty so you can bring your own people and premise.*
+
+## What you can do
+
+| Control | What it gives you |
+| --- | --- |
+| **Cast & connections** | Import people from your character library and choose a different connection profile for each. |
+| **Play / Pause / Next turn** | Watch a bounded run, continue until paused, or advance one contribution at a time. |
+| **Narrate** | Introduce a shared event or steer the scene without becoming a character. |
+| **Privately influence** | Give one character motivation or knowledge that stays out of other characters' prompts. |
+| **Speak as character** | Write someone's dialogue or action yourself. |
+| **Director** | Optionally let a separate model choose who responds next, or make the choice yourself. |
+| **Presence** | Send a character away and bring them back without giving them knowledge of missed events. |
+| **Separate window** | Open another synchronized view, with one generation loop shared across both. |
+| **Saved stories & exports** | Resume stories in this browser, export a complete backup, or save a public text transcript. |
 
 ## Install
 
-Requires SillyTavern 1.19 or later and a browser supporting Web Locks, IndexedDB and BroadcastChannel (current Chromium or Firefox). Enable SillyTavern's Connection Manager and create at least one supported Chat Completion or Text Completion profile.
+Requires **SillyTavern 1.19 or later**, a browser supporting Web Locks, IndexedDB and BroadcastChannel, and at least one supported Chat Completion or Text Completion profile in SillyTavern's **Connection Manager**. Chromium was tested; other supporting browsers have not yet been verified.
 
-Once this repository is hosted, paste its Git clone URL into **Extensions → Install extension**. All runtime JavaScript and CSS are committed in the root. There is no build or dependency installation step. Reload SillyTavern and open **Group Stories** from the extensions/wand menu.
+1. Open **Extensions → Install extension** in SillyTavern.
+2. Paste this repository URL:
+
+   ```text
+   https://github.com/rustyorb/SillyTavern-GroupStories
+   ```
+
+3. Install, then reload SillyTavern.
+4. Open **Group Stories** from the extensions/wand menu.
+
+**No build step. No package installation.** The repository contains the ready-to-run JavaScript and CSS.
 
 For local development, copy `manifest.json`, `index.js`, `core.js`, `engine.js`, `storage.js` and `style.css` into `data/<your-user>/extensions/group-stories/`, then reload. Only the dedicated local instance at `http://127.0.0.1:8123/` was used during development.
 
@@ -47,3 +81,11 @@ Run `npm test` with Node.js 22 or later. No packages are required. Tests cover p
 For the optional local UI check, make Playwright available to Node and run `node tests/live-ui.cjs`. Alternatively set `GROUP_STORIES_PLAYWRIGHT` to an existing Playwright package directory. The check targets only `http://127.0.0.1:8123/`, uses an isolated browser, injects temporary in-memory test characters and simulated provider responses, and writes evidence under `work/live-ui/`. `GROUP_STORIES_UI_OUTPUT` can select another evidence directory. It does not save test characters or connection profiles to the host.
 
 UI verification uses the local SillyTavern with simulated character responses. No real credential-backed model generation was used during this version's verification. See `docs/verification.md` for the checked behaviors.
+
+## Feedback
+
+Found a problem or have an idea? [Open an issue](https://github.com/rustyorb/SillyTavern-GroupStories/issues). For a bug, include your SillyTavern version, browser, steps to reproduce, and the visible status message. Remove private directions, story content and credentials from anything you share.
+
+## License
+
+[MIT](LICENSE).
