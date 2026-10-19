@@ -28,6 +28,17 @@
 .gs-cast>button { margin:9px 0 18px; width:100%; }
 .gs-person { padding:14px 0; border-top:1px solid var(--gs-line); }
 .gs-person-heading { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+.gs-workspace .gs-card-open { display:flex; width:100%; text-align:left; padding:0; border:0; background:transparent; }
+.gs-workspace .gs-card-open:hover { color:var(--gs-accent); background:transparent; }
+.gs-person .gs-card-link { display:block; }
+.gs-persona-label { display:block; margin-bottom:8px; font-size:12px; }
+.gs-persona-label select { display:block; margin-top:6px; }
+.gs-persona-summary { display:flex; align-items:center; gap:9px; font-size:11px; color:var(--gs-muted); margin:0 0 18px; }
+.gs-persona-summary .gs-avatar { width:30px; height:38px; }
+.gs-user-message { background:#233a3b; border-left:3px solid #8bc4bc; border-radius:5px; padding:12px 16px; }
+.gs-user-message small { color:#b2dfd8; }
+.gs-character-card .gs-card-text { white-space:pre-wrap; overflow-wrap:anywhere; padding:10px 12px; background:#171a1e; border-radius:6px; }
+.gs-character-card h3 { margin:22px 0 8px; font-size:14px; color:#e9ba83; }
 .gs-avatar { width:44px; height:54px; object-fit:cover; border-radius:6px; }
 .gs-person small { display:block; font-size:11px; }
 .gs-workspace .gs-link { border:0; background:none; padding:5px 0; color:var(--gs-accent); font-size:12px; }
@@ -40,7 +51,7 @@
 .gs-directing small { font-size:11px; display:block; line-height:1.5; }
 .gs-directing button { margin:12px 0; width:100%; }
 .gs-story { display:flex; flex-direction:column; min-height:0; min-width:0; }
-.gs-transcript { flex:1; overflow:auto; padding:28px clamp(18px,3vw,54px); scroll-behavior:smooth; }
+.gs-transcript { flex:1; overflow:auto; padding:28px clamp(18px,3vw,54px); }
 .gs-empty { max-width:520px; margin:12vh auto 0; }
 .gs-empty h2 { font-size:clamp(24px,2.5vw,36px); font-family:Georgia,serif; line-height:1.2; margin:15px 0; font-weight:400; }
 .gs-empty p { color:var(--gs-muted); }

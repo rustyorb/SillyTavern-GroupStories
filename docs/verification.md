@@ -1,5 +1,17 @@
 # Verification history
 
+## v0.2.0 — Reply pacing, personas and readable cards — 2026-10-19
+
+- New stories select the active SillyTavern persona; existing stories retain narrator-only participation until a persona is selected. Profiles come from the host's persona names/descriptions and are copied into the story without changing the host selection.
+- `Chat as me` posts a public human contribution with an immutable author name/avatar snapshot. `Send & reply` pauses any existing automatic run, saves the contribution and requests one character response. The human is excluded from automatic speaker selection. Prompts explicitly reserve the human's speech, actions and thoughts for the human, and expand basic `{{user}}` / `{{char}}` references.
+- Automatic replies wait a configurable 0–300 seconds between turns, with a visible countdown and a five-second default. Next turn and the first response begin immediately. Pause interrupts the wait and releases ownership even if a provider ignores cancellation. Changing direction during a wait is read before the next request.
+- Clicking a cast member's portrait/name or `View character card` opens a read-only view of the story's card snapshot. Description, personality, examples, source setup/greeting and available creator/card instructions are shown as text. Import reads a full native character when the library uses shallow loading. The original card is not modified.
+- New fields are added to existing stories/backups without changing their ids, history or observer mode. User messages and persona metadata round-trip through the existing v1 backup format.
+
+Node verification: **19 tests passed**, covering persona prompts and macro expansion, immutable author identity, user-event audience filtering, old backup defaults, interval placement, immediate countdown cancellation and cancellation of an indefinitely pending provider request, alongside all prior privacy and ownership tests.
+
+The live UI suite passed **47 checks** on the dedicated local host through an ordinary HTTP hostname mapped to 127.0.0.1, at desktop and 390px mobile widths, with no Group Stories runtime errors or unexplained console errors. It covers readable card contents and lack of editable fields, persona selection without switching the host persona, actual countdown timing, stable controls/draft text across countdown ticks, sending during a countdown, persona context in the outgoing prompt, reload persistence, mobile card reading and narrator-mode availability, alongside the earlier portrait/launcher/privacy/storage flows. Providers and temporary personas/characters are simulated in the isolated browser only. No real provider request or access to the user's headless machine/phone was performed.
+
 ## v0.1.2 — Native launchers and portrait picker — 2026-10-19
 
 Group Stories now has a native-styled top-bar launcher with a group-of-people icon, placed beside Creative Studio's feather when present. The wand entry uses SillyTavern's standard menu row and Font Awesome icon. No settings drawer was added. Both launchers open the same workspace, and keyboard activation works on the top-bar icon.

@@ -1,6 +1,6 @@
-# Group Stories v0.1 design
+# Group Stories design
 
-The approved direction is a separate installer-ready SillyTavern extension and repository, for contemporary human ensemble stories without a user character. The workspace has cast and per-character profiles, a central transcript, a collapsible scene/directing panel and a direction composer. Play, Pause, Next turn and generation status remain visible. Character cards retain their source scenario/greeting separately from the story-owned scene and opening.
+The direction is a separate installer-ready SillyTavern extension and repository, for contemporary human ensemble stories. As of v0.2.0, participation with an existing SillyTavern persona is the default for new stories; narrator-only observation remains available. The workspace has cast and per-character profiles, a central transcript, a collapsible scene/directing panel and a direction composer. Play, Pause, Next turn, reply interval and generation/countdown status remain visible. Character cards retain their source scenario/greeting separately from the story-owned scene and opening, with a read-only card viewer.
 
 ## Boundaries
 
@@ -13,6 +13,8 @@ The host API is read through `SillyTavern.getContext()` after APP_READY. Connect
 An account-scoped IndexedDB stores active and archived sessions. As of v0.1.1, IndexedDB read/write transactions serialize mutations and claim exclusive generation ownership, including over ordinary LAN HTTP. A run lease lasts 12 seconds and renews every 2 seconds. Run commits validate their ownership token and expiry inside the same transaction as the story write, so an expired owner cannot append a late response. Releasing an old owner never deletes its replacement. The schema upgrade retains v0.1.0 stories. BroadcastChannel distributes pause, status and state-refresh messages across views. The optional separate window is another view of the same host origin; it never creates its own independent run. A browser reload restores saved state with generation stopped. This coordinates one browser/account/origin, not different devices.
 
 Every generated response is committed only if the story and its inputs still match the request snapshot. Cancellation marks the run stopped before aborting the provider and late responses are discarded. Provider errors stop with visible status. Generation reads current persisted state before every turn.
+
+Automatic turns wait a configurable 0–300 seconds between contributions (five seconds by default), using abortable waits and a visible countdown. Sending a human contribution pauses the existing run and records a public user event with a snapshot of its author name/avatar, then requests one character reply once run ownership is available. Persona snapshots are story-local; the extension reads but does not switch the host persona. Prompts resolve basic user/character macros and explicitly reserve human actions and dialogue for the human. Old stories retain narrator mode; new optional fields are added without deleting history or changing session format version.
 
 ## Privacy and knowledge
 

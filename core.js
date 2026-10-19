@@ -7,16 +7,27 @@ export const uid = () => {
     const hex = [...bytes].map(b => b.toString(16).padStart(2, '0')).join('');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
-export function newSession() {
+export function newSession(participant = null) {
     return { version: 1, id: uid(), title: 'Untitled story', scene: '', opening: '', cast: [], events: [],
-        directorProfile: '', nextSpeaker: '', mode: 'narrate', target: '', turnLimit: 10, maxTokens: 450 };
+        directorProfile: '', nextSpeaker: '', mode: 'talk', target: '', turnLimit: 10, maxTokens: 450,
+        replyDelay: 5, participant };
+}
+export function upgradeSession(session) {
+    session.replyDelay ??= 5;
+    session.participant ??= null;
+    return session;
+}
+export function speakerName(session, event) {
+    return event.kind === 'user' ? event.persona.name : session.cast.find(c => c.id === event.speaker)?.name || 'Narrator';
 }
 export function importCharacter(card) {
     const data = card.data || card;
     return { id: uid(), avatar: card.avatar, name: data.name || card.name || 'Unnamed',
         description: data.description || '', personality: data.personality || '',
         examples: data.mes_example || '', originalScenario: data.scenario || '',
-        originalGreeting: data.first_mes || '', profile: '', present: true };
+        originalGreeting: data.first_mes || '', profile: '', present: true,
+        creatorNotes: data.creator_notes || '', creator: data.creator || '',
+        systemPrompt: data.system_prompt || '', postHistoryInstructions: data.post_history_instructions || '' };
 }
 export function visibleEvents(session, characterId) {
     // Audience is captured when an event occurs. Returning to the scene grants no past knowledge.
@@ -26,37 +37,45 @@ export function addEvent(session, { kind, text, speaker = '', target = '' }) {
     if (!text.trim()) throw new Error('Write something first.');
     if (text.length > 24000) throw new Error('Keep each direction under 24,000 characters.');
     if (kind === 'influence' && !session.cast.some(c => c.id === target)) throw new Error('Choose a character to influence.');
+    if (kind === 'user' && !session.participant) throw new Error('Choose your persona to join the chat.');
     const audience = kind === 'influence' ? [target] : session.cast.filter(c => c.present).map(c => c.id);
     const event = { id: uid(), kind, text: text.trim(), speaker, target, audience, at: Date.now() };
+    if (kind === 'user') {
+        const { id, name, avatar } = session.participant;
+        event.speaker = `user:${id}`; event.persona = { id, name, avatar };
+    }
     session.events.push(event);
     return event;
 }
 const literal = value => JSON.stringify(value);
 export function characterPrompt(session, character) {
+    const participant = session.participant;
+    const expand = value => value.replace(/\{\{user\}\}/gi, () => participant?.name || 'the other people in the scene').replace(/\{\{char\}\}/gi, () => character.name);
     const known = visibleEvents(session, character.id);
-    const opening = session.opening ? [{ kind: 'opening', text: session.opening }] : [];
+    const opening = session.opening ? [{ kind: 'opening', text: expand(session.opening) }] : [];
     const history = [...opening, ...known.map(e => ({ kind: e.kind,
-        speaker: session.cast.find(c => c.id === e.speaker)?.name || (e.kind === 'influence' ? 'Private direction' : 'Narrator'), text: e.text }))];
-    const length = JSON.stringify(history).length + session.scene.length + character.description.length + character.personality.length + character.examples.length;
+        speaker: e.kind === 'influence' ? 'Private direction' : speakerName(session, e), text: e.text }))];
+    const length = JSON.stringify(history).length + session.scene.length + character.description.length + character.personality.length + character.examples.length + (participant?.description.length || 0);
     // Never silently truncate away canon or replace it with an omniscient summary.
     if (length > 90000) throw new Error('This story is too long for the current context limit. Export it and begin a new scene in a new story.');
     return [{ role: 'system', content: `You portray exactly one human character in a grounded contemporary ensemble story: ${character.name}.
-No user character exists. Do not address an invisible protagonist. No fantasy, magic, game statistics, or RPG mechanics.
+${participant ? `The human user participates as ${participant.name}. Only the human controls this person. Never write their dialogue, actions, decisions or inner thoughts. Respond to their actual posted contributions. Their public persona is ${literal({ name: participant.name, description: expand(participant.description) })}.` : 'No user character exists. Do not address an invisible protagonist.'} No fantasy, magic, game statistics, or RPG mechanics.
 Write only this character's next contribution: believable dialogue and/or observable action, normally 1-3 paragraphs. Preserve a distinct voice. Silence, hesitation, disagreement and uneven participation are natural. Do not write other characters' dialogue, inner thoughts, or decisions. Never prefix output with your name.
 Private directions shape your motivation or knowledge; never quote them or treat them as public events. You know only the opening and the supplied witnessed/told events. You may choose to reveal something through your own speech, but do not assume anyone already knows it.
-Character identity (source data; adapt roleplay references to this ensemble with no user protagonist):
-${literal({ description: character.description, personality: character.personality, voiceExamples: character.examples })}
-Shared scene: ${literal(session.scene)}
-People present: ${literal(session.cast.filter(c => c.present).map(c => c.name))}` },
+Character identity (source data; interpret relationships in this ensemble):
+${literal({ description: expand(character.description), personality: expand(character.personality), voiceExamples: expand(character.examples) })}
+Shared scene: ${literal(expand(session.scene))}
+People present: ${literal([...session.cast.filter(c => c.present).map(c => c.name), ...(participant ? [participant.name] : [])])}` },
     { role: 'user', content: `Your opening and known events, in order:\n${literal(history)}\nContinue as ${character.name}.` }];
 }
 export function directorPrompt(session) {
     const eligible = session.cast.filter(c => c.present);
     // Director receives public scene events only. No private direction, private card, or summary.
     const publicHistory = session.events.filter(e => e.kind !== 'influence').slice(-30).map(e => ({
-        speaker: session.cast.find(c => c.id === e.speaker)?.name || 'Narrator', text: e.text }));
+        speaker: speakerName(session, e), text: e.text }));
     return [{ role: 'system', content: 'Choose the next speaker for a grounded human ensemble story. Consider who was addressed, tension, silence and pacing. Avoid rigid round robin. Return ONLY the exact id of one eligible character. Do not write story prose.' },
         { role: 'user', content: literal({ scene: session.scene, opening: session.opening,
+            humanParticipant: session.participant?.name || null,
             eligible: eligible.map(c => ({ id: c.id, name: c.name })), recentPublicEvents: publicHistory }) }];
 }
 export function chooseSpeaker(session, random = Math.random) {
@@ -73,8 +92,12 @@ export function chooseSpeaker(session, random = Math.random) {
 }
 export function validateSession(s) {
     if (!s || s.version !== 1 || typeof s.id !== 'string' || !Array.isArray(s.cast) || !Array.isArray(s.events)) throw new Error('This is not a Group Stories v1 export.');
+    upgradeSession(s);
+    if (!Number.isFinite(s.replyDelay) || s.replyDelay < 0 || s.replyDelay > 300) throw new Error('Reply delay must be between 0 and 300 seconds.');
+    if (s.participant !== null && (!s.participant || ['id', 'name', 'avatar', 'description'].some(k => typeof s.participant[k] !== 'string'))) throw new Error('Invalid user persona.');
     if (s.cast.length > 40 || s.events.length > 10000) throw new Error('Import exceeds the supported story size.');
     for (const key of ['title', 'scene', 'opening', 'directorProfile', 'nextSpeaker', 'mode', 'target']) if (typeof s[key] !== 'string') throw new Error(`Invalid story field: ${key}`);
+    if (!['talk', 'narrate', 'influence', 'speak'].includes(s.mode)) throw new Error('Invalid composer mode.');
     if (!Number.isInteger(s.turnLimit) || s.turnLimit < 0 || s.turnLimit > 1000 || !Number.isInteger(s.maxTokens) || s.maxTokens < 80 || s.maxTokens > 4000) throw new Error('Invalid generation limits.');
     const ids = new Set();
     for (const c of s.cast) {
@@ -84,7 +107,8 @@ export function validateSession(s) {
         if (c.avatar != null && typeof c.avatar !== 'string') throw new Error('Invalid portrait.');
     }
     for (const e of s.events) {
-        if (!e || typeof e.id !== 'string' || typeof e.text !== 'string' || !['narrate', 'scene', 'influence', 'character'].includes(e.kind) || !Array.isArray(e.audience) || e.audience.some(id => !ids.has(id))) throw new Error('Invalid event or audience.');
+        if (!e || typeof e.id !== 'string' || typeof e.text !== 'string' || !['narrate', 'scene', 'influence', 'character', 'user'].includes(e.kind) || !Array.isArray(e.audience) || e.audience.some(id => !ids.has(id))) throw new Error('Invalid event or audience.');
+        if (e.kind === 'user' && (!e.persona || ['id', 'name', 'avatar'].some(k => typeof e.persona[k] !== 'string') || e.speaker !== `user:${e.persona.id}`)) throw new Error('Invalid user message identity.');
         if (e.kind === 'influence' && (!ids.has(e.target) || e.audience.length !== 1 || e.audience[0] !== e.target)) throw new Error('Private direction has an invalid audience.');
         if (e.kind === 'character' && !ids.has(e.speaker)) throw new Error('Unknown speaker.');
     }

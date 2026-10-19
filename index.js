@@ -1,5 +1,6 @@
 import { getCurrentUserHandle } from '../../../user.js';
-import { addEvent, importCharacter, newSession, validateSession } from './core.js';
+import { user_avatar } from '../../../personas.js';
+import { addEvent, importCharacter, newSession, validateSession, speakerName } from './core.js';
 import { StoryEngine } from './engine.js';
 import { createStore } from './storage.js';
 import { createCoordinator } from './coordinator.js';
@@ -14,10 +15,18 @@ const el = (tag, className, text) => {
 let root, store, engine, channel, session, adaptationController, coordinator;
 let statusText = 'Ready. Choose a cast and set the scene.';
 let profiles = [];
+let personas = [];
 const $ = selector => root.querySelector(selector);
 const notify = error => { statusText = error.message || String(error); renderStatus(); };
 const guarded = fn => async (...args) => { try { await fn(...args); } catch (error) { notify(error); } };
 function renderStatus() { if (root) $('[data-status]').textContent = statusText; }
+function availablePersonas() {
+    const ctx = context(); const settings = ctx.powerUserSettings;
+    const saved = Object.entries(settings.personas || {}).map(([id, name]) => ({ id, name: String(name), avatar: id, description: settings.persona_descriptions?.[id]?.description || '' }));
+    if (!saved.some(p => p.id === user_avatar)) saved.unshift({ id: user_avatar || 'current-persona', name: ctx.name1 || 'You', avatar: user_avatar || '', description: settings.persona_description || '' });
+    return saved.sort((a, b) => a.name.localeCompare(b.name));
+}
+function activePersona() { const choices = availablePersonas(); return choices.find(p => p.id === user_avatar) || choices.find(p => p.id === 'current-persona') || choices[0] || null; }
 async function request(profile, messages, tokens, signal) {
     const service = context().ConnectionManagerRequestService;
     const prompt = service.constructPrompt(messages, profile);
@@ -45,12 +54,23 @@ function render() {
     const active = root.contains(document.activeElement) ? document.activeElement : null;
     const focusedKey = active?.dataset.field;
     const focusedValue = focusedKey ? active.value : null;
-    for (const key of ['title', 'scene', 'opening', 'turnLimit', 'maxTokens', 'mode']) $('[data-field="' + key + '"]').value = session[key];
+    for (const key of ['title', 'scene', 'opening', 'turnLimit', 'maxTokens', 'mode', 'replyDelay']) $('[data-field="' + key + '"]').value = session[key];
+    personas = availablePersonas();
+    if (session.participant && !personas.some(p => p.id === session.participant.id)) personas.push(session.participant);
+    options($('[data-persona]'), personas, session.participant?.id, 'Observe as narrator (no user character)');
+    const identity = $('[data-persona-summary]'); identity.replaceChildren();
+    if (session.participant) {
+        if (session.participant.avatar) { const img = el('img', 'gs-avatar'); img.src = context().getThumbnailUrl('persona', session.participant.avatar); img.alt = ''; identity.append(img); }
+        identity.append(el('span', '', `You play ${session.participant.name}. Only you write their words and actions.`));
+    } else identity.append(el('span', '', 'You are observing and directing without joining the cast.'));
     options($('[data-field="directorProfile"]'), profiles, session.directorProfile, 'No director · varied speaker selection');
     options($('[data-field="nextSpeaker"]'), session.cast.filter(c => c.present), session.nextSpeaker, 'Let the story choose');
     options($('[data-field="target"]'), session.cast, session.target, 'Choose a character');
-    $('[data-field="target"]').hidden = session.mode === 'narrate';
-    $('[data-direction]').placeholder = session.mode === 'influence' ? 'Private motivation or knowledge, for this character only…' : session.mode === 'speak' ? 'Write this character’s dialogue or action…' : 'Introduce an event, describe a change, or steer the scene…';
+    $('[data-field="target"]').hidden = ['narrate', 'talk'].includes(session.mode);
+    $('[data-direction]').placeholder = session.mode === 'talk' ? `Write as ${session.participant?.name || 'your persona'}…` : session.mode === 'influence' ? 'Private motivation or knowledge, for this character only…' : session.mode === 'speak' ? 'Write this character’s dialogue or action…' : 'Introduce an event, describe a change, or steer the scene…';
+    $('[data-talk-option]').textContent = session.participant ? `Chat as ${session.participant.name}` : 'Chat as me';
+    $('[data-submit]').textContent = session.mode === 'talk' ? 'Send & reply ↑' : 'Add direction ↑';
+    $('[data-composer-note]').textContent = session.mode === 'talk' ? 'Send your message and get one character response. Play continues the group conversation.' : 'Narrate events or privately direct a character.';
     $('[data-opening-note]').textContent = session.events.length ? 'Opening is locked once the story starts. Change the scene or narrate the next event below.' : 'The opening belongs to this story. Original card greetings are never inserted automatically.';
     $('[data-field="opening"]').disabled = session.events.length > 0;
     const cast = $('[data-cast]');
@@ -58,7 +78,9 @@ function render() {
     if (!session.cast.length) cast.append(el('p', 'gs-muted', 'Choose people from your character library. Their original cards stay untouched.'));
     for (const character of session.cast) {
         const card = el('article', 'gs-person');
-        const heading = el('div', 'gs-person-heading');
+        const heading = el('button', 'gs-person-heading gs-card-open'); heading.type = 'button';
+        heading.setAttribute('aria-label', `Read ${character.name} character card`);
+        heading.addEventListener('click', () => showCharacterCard(character));
         if (character.avatar) {
             const img = el('img', 'gs-avatar');
             img.src = context().getThumbnailUrl('avatar', character.avatar); img.alt = ''; img.loading = 'lazy';
@@ -71,6 +93,8 @@ function render() {
         options(profile, profiles, character.profile, 'Choose connection profile');
         profile.addEventListener('change', guarded(() => change(s => { s.cast.find(c => c.id === character.id).profile = profile.value; })));
         card.append(profile);
+        const read = el('button', 'gs-link gs-card-link', 'View character card'); read.type = 'button';
+        read.addEventListener('click', () => showCharacterCard(character)); card.append(read);
         const presence = el('button', 'gs-link', character.present ? 'Leave scene' : 'Return to scene');
         presence.addEventListener('click', guarded(() => change(s => {
             const c = s.cast.find(c => c.id === character.id);
@@ -104,18 +128,28 @@ function render() {
     }
     if (!session.events.length && !session.opening) {
         const empty = el('div', 'gs-empty');
-        empty.append(el('span', 'gs-eyebrow', 'LET PEOPLE BE COMPLICATED'), el('h2', '', 'A cast. A scene. See what happens.'), el('p', '', 'Pick your people, give them somewhere to be, and press Play. You direct the story without having to become a character.'));
+        empty.append(el('span', 'gs-eyebrow', 'LET PEOPLE BE COMPLICATED'), el('h2', '', 'A cast. A scene. See what happens.'), el('p', '', session.participant ? 'Choose your cast and a starting scene, then send a message as your persona or press Play to let the conversation unfold.' : 'Pick your people, give them somewhere to be, and press Play. You can observe as narrator or choose a persona to join in.'));
         transcript.append(empty);
     }
     for (const event of session.events) {
-        const card = el('article', `gs-event ${event.kind === 'influence' ? 'gs-private' : event.kind === 'character' ? '' : 'gs-narration'}`);
+        const card = el('article', `gs-event ${event.kind === 'influence' ? 'gs-private' : event.kind === 'user' ? 'gs-user-message' : event.kind === 'character' ? '' : 'gs-narration'}`);
         const name = session.cast.find(c => c.id === (event.kind === 'influence' ? event.target : event.speaker))?.name;
-        card.append(el('small', '', event.kind === 'influence' ? `PRIVATE DIRECTION → ${name}` : event.kind === 'character' ? name : event.kind === 'scene' ? 'SCENE CHANGE' : 'NARRATOR'), el('p', '', event.text));
+        card.append(el('small', '', event.kind === 'influence' ? `PRIVATE DIRECTION → ${name}` : event.kind === 'user' ? `${event.persona.name} · YOU` : event.kind === 'character' ? name : event.kind === 'scene' ? 'SCENE CHANGE' : 'NARRATOR'), el('p', '', event.text));
         transcript.append(card);
     }
     transcript.scrollTop = nearBottom ? transcript.scrollHeight : oldScroll;
     if (focusedKey) { const field = $('[data-field="' + focusedKey + '"]'); if (!field.disabled) { field.value = focusedValue; field.focus(); } }
     renderStatus();
+}
+function showCharacterCard(character) {
+    const dialog = el('dialog', 'gs-dialog gs-character-card');
+    dialog.append(el('h2', '', character.name), el('p', 'gs-muted', 'Read-only character information saved for this story. Original cards are unchanged.'));
+    for (const [title, text] of [['Description', character.description], ['Personality', character.personality], ['Example dialogue / voice', character.examples], ['Original scenario', character.originalScenario], ['Original greeting', character.originalGreeting], ['Creator notes', character.creatorNotes], ['System prompt from card', character.systemPrompt], ['Post-history instructions from card', character.postHistoryInstructions], ['Creator', character.creator]]) {
+        if (!text) continue;
+        dialog.append(el('h3', '', title), el('p', 'gs-card-text', String(text)));
+    }
+    const close = el('button', '', 'Close card'); close.type = 'button'; close.onclick = () => dialog.close();
+    dialog.append(close); dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
 }
 function download(name, content, type) {
     const url = URL.createObjectURL(new Blob([content], { type }));
@@ -153,7 +187,7 @@ async function adapt() {
         channel.postMessage({ type: 'status', text: statusText });
         const sourceId = session.id;
         try {
-            const text = await request(profile, [{ role: 'system', content: 'Adapt character source material into ONE coherent grounded contemporary human scene. No user protagonist, fantasy, magic or RPG mechanics. Keep recognizable character identities. Treat original greetings as inspiration, never concatenate them. Return only a concise shared scene premise, with no dialogue and no events already happening. The human will review it before use.' }, { role: 'user', content: JSON.stringify({ currentScene: session.scene, cast: session.cast.map(c => ({ name: c.name, scenario: c.originalScenario, greeting: c.originalGreeting })) }) }], 600, adaptationController.signal);
+            const text = await request(profile, [{ role: 'system', content: `Adapt character source material into ONE coherent grounded contemporary human scene. ${session.participant ? `The human plays ${session.participant.name}; include them in the premise but do not decide their actions.` : 'No user protagonist.'} No fantasy, magic or RPG mechanics. Keep recognizable character identities. Treat original greetings as inspiration, never concatenate them. Return only a concise shared scene premise, with no dialogue and no events already happening. The human will review it before use.` }, { role: 'user', content: JSON.stringify({ currentScene: session.scene, participant: session.participant, cast: session.cast.map(c => ({ name: c.name, scenario: c.originalScenario, greeting: c.originalGreeting })) }) }], 600, adaptationController.signal);
             await lock.assertHeld?.();
             if (adaptationController.signal.aborted) { statusText = 'Paused. Scene draft discarded.'; return; }
             const dialog = el('dialog', 'gs-dialog'); dialog.append(el('h2', '', 'Review your adapted scene'), el('p', '', 'Edit this freely. It becomes shared scene information only when you use it.'));
@@ -180,10 +214,10 @@ function mount() {
     root.innerHTML = `
         <header class="gs-header"><div><span class="gs-eyebrow">GROUP STORIES</span><input data-field="title" aria-label="Story title" maxlength="120"></div>
         <div class="gs-toolbar"><button data-action="saved">Saved stories</button><button data-action="new">New story</button><button data-action="popout" title="Open another synchronized view">↗ Window</button><button data-action="close" aria-label="Close Group Stories">✕</button></div></header>
-        <div class="gs-controls"><button class="gs-primary" data-action="play">▶ Play</button><button data-action="pause">Ⅱ Pause</button><button data-action="next">Next turn →</button><label>Run <input data-field="turnLimit" type="number" min="0" max="1000" aria-label="Turns to run"> turns <small>(0 = until paused)</small></label><span data-status role="status" aria-live="polite"></span></div>
-        <div class="gs-columns"><aside class="gs-cast"><div class="gs-section-heading"><h2>The cast</h2><button class="gs-link" data-action="refresh-library">Refresh</button></div><label class="gs-sr" for="gs-library">Character library</label><select id="gs-library" data-library></select><button data-action="add">+ Add to cast</button><div data-cast></div></aside>
+        <div class="gs-controls"><button class="gs-primary" data-action="play">▶ Play</button><button data-action="pause">Ⅱ Pause</button><button data-action="next">Next turn →</button><label>Run <input data-field="turnLimit" type="number" min="0" max="1000" aria-label="Turns to run"> turns <small>(0 = until paused)</small></label><label>Between replies <input data-field="replyDelay" type="number" min="0" max="300" step="1" aria-label="Seconds between replies"> sec</label><span data-status role="status" aria-live="polite"></span></div>
+        <div class="gs-columns"><aside class="gs-cast"><div class="gs-section-heading"><h2>The cast</h2><button class="gs-link" data-action="refresh-library">Refresh</button></div><label class="gs-persona-label">You in the story<select data-persona aria-label="Your user persona"></select></label><div class="gs-persona-summary" data-persona-summary></div><label class="gs-sr" for="gs-library">Character library</label><select id="gs-library" data-library></select><button data-action="add">+ Add to cast</button><div data-cast></div></aside>
         <main class="gs-story"><div class="gs-transcript" data-transcript role="log" aria-label="Story transcript"></div>
-        <form class="gs-composer"><div class="gs-composer-modes"><label class="gs-sr" for="gs-mode">Direction mode</label><select id="gs-mode" data-field="mode"><option value="narrate">Narrate</option><option value="influence">Privately influence</option><option value="speak">Speak as character</option></select><select data-field="target" aria-label="Direction recipient"></select></div><textarea data-direction rows="2" aria-label="Your direction"></textarea><div class="gs-composer-footer"><small>You direct. You don’t have to join the cast.</small><button class="gs-primary" type="submit">Add direction ↑</button></div></form></main>
+        <form class="gs-composer"><div class="gs-composer-modes"><label class="gs-sr" for="gs-mode">Direction mode</label><select id="gs-mode" data-field="mode"><option value="talk" data-talk-option>Chat as me</option><option value="narrate">Narrate</option><option value="influence">Privately influence</option><option value="speak">Speak as character</option></select><select data-field="target" aria-label="Direction recipient"></select></div><textarea data-direction rows="2" aria-label="Your direction"></textarea><div class="gs-composer-footer"><small data-composer-note></small><button class="gs-primary" data-submit type="submit">Send & reply ↑</button></div></form></main>
         <aside class="gs-directing"><details open><summary>Scene & direction</summary><label>Shared scene<textarea data-field="scene" rows="6" placeholder="A diner in 2025, an hour before closing. Three old friends have met for the first time in years…"></textarea></label><label>Opening<textarea data-field="opening" rows="4" placeholder="Optional: the moment the story begins."></textarea></label><small data-opening-note></small><button data-action="adapt">Adapt original setups…</button><label>Who responds next?<select data-field="nextSpeaker"></select></label><label>Director connection<select data-field="directorProfile"></select></label><small>A director chooses who responds next. Without one, speaker choice varies and avoids immediate repeats.</small><label>Response token limit<input data-field="maxTokens" type="number" min="80" max="4000"></label></details><details class="gs-storage"><summary>Save & export</summary><p>Saved automatically in this browser and SillyTavern account. Export a backup to move it elsewhere.</p><button data-action="export">Export story backup</button><button data-action="import">Import story backup</button><input type="file" data-import accept="application/json,.json" hidden><button data-action="transcript">Export public transcript</button><small>Story backups include private directions. Public transcripts leave them out.</small></details></aside></div>`;
     document.body.append(root);
     root.querySelectorAll('button').forEach(button => button.type = 'button');
@@ -191,6 +225,17 @@ function mount() {
     // The composer is the only submit action.
     $('.gs-composer-footer button').type = 'submit';
     root.addEventListener('change', guarded(async event => {
+        if (event.target.matches('[data-persona]')) {
+            const persona = personas.find(p => p.id === event.target.value) || null;
+            await change(s => {
+                if (s.events.length && s.participant?.id !== persona?.id) {
+                    if (s.participant) addEvent(s, { kind: 'narrate', text: `${s.participant.name} steps away from the conversation.` });
+                    if (persona) addEvent(s, { kind: 'narrate', text: `${persona.name} joins the conversation.` });
+                }
+                s.participant = persona ? structuredClone(persona) : null; s.mode = persona ? 'talk' : 'narrate';
+            });
+            return;
+        }
         const key = event.target.dataset.field;
         if (!key) return;
         const value = event.target.type === 'number' ? Number(event.target.value) : event.target.value;
@@ -198,16 +243,38 @@ function mount() {
             if (key === 'opening' && s.events.length) throw new Error('The opening is locked after the first event.');
             if (key === 'turnLimit' && (!Number.isInteger(value) || value < 0 || value > 1000)) throw new Error('Choose 0–1000 turns.');
             if (key === 'maxTokens' && (!Number.isInteger(value) || value < 80 || value > 4000)) throw new Error('Choose 80–4000 response tokens.');
+            if (key === 'replyDelay' && (!Number.isFinite(value) || value < 0 || value > 300)) throw new Error('Choose a reply delay from 0 to 300 seconds.');
             s[key] = value;
             if (key === 'scene' && s.events.length && value.trim()) addEvent(s, { kind: 'scene', text: value });
         });
     }));
     $('.gs-composer').addEventListener('submit', guarded(async event => {
         event.preventDefault(); const text = $('[data-direction]').value;
+        const talking = session.mode === 'talk';
+        let replyVersion;
+        if (talking) {
+            if (!session.participant) throw new Error('Choose your persona in You in the story first.');
+            if (!text.trim()) throw new Error('Write a message first.');
+            engine.pause(); adaptationController?.abort();
+            replyVersion = engine.pauseVersion;
+        }
         await change(s => {
             if (s.mode === 'speak' && !s.cast.some(c => c.id === s.target && c.present)) throw new Error('Choose a character who is in the scene.');
-            addEvent(s, { kind: s.mode === 'influence' ? 'influence' : s.mode === 'speak' ? 'character' : 'narrate', text, target: s.target, speaker: s.mode === 'speak' ? s.target : '' });
+            addEvent(s, { kind: s.mode === 'talk' ? 'user' : s.mode === 'influence' ? 'influence' : s.mode === 'speak' ? 'character' : 'narrate', text, target: s.target, speaker: s.mode === 'speak' ? s.target : '' });
         }); $('[data-direction]').value = '';
+        if (talking) {
+            const storyId = session.id;
+            for (let attempt = 0; attempt < 60; attempt++) {
+                if (engine.pauseVersion !== replyVersion) return;
+                const locks = await coordinator.query();
+                if (!locks.held.some(lock => lock.name === 'group-stories-generation')) {
+                    if ((await store.read()).id === storyId) await engine.run(1);
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            statusText = 'Message sent. The previous request is still stopping; press Next turn when ready.'; renderStatus();
+        }
     }));
     root.addEventListener('click', guarded(async event => {
         const action = event.target.closest('[data-action]')?.dataset.action;
@@ -218,18 +285,20 @@ function mount() {
         if (action === 'pause') { engine.pause(); adaptationController?.abort(); statusText = 'Pausing…'; renderStatus(); }
         if (action === 'refresh-library') { refreshLibrary(); render(); }
         if (action === 'add') {
-            const card = context().characters.find(c => c.avatar === $('[data-library]').value);
+            const index = context().characters.findIndex(c => c.avatar === $('[data-library]').value);
+            if (index >= 0) await context().unshallowCharacter(index);
+            const card = context().characters[index];
             if (!card) throw new Error('Choose a character from the library.');
             await change(s => { if (s.cast.some(c => c.avatar === card.avatar)) throw new Error('That character is already in this story.'); if (s.cast.length >= 40) throw new Error('This story already has 40 characters.'); s.cast.push(importCharacter(card)); });
         }
         if (action === 'popout') { const url = new URL(location.href); url.searchParams.set('group-stories', '1'); window.open(url, 'group-stories-view', 'popup,width=1440,height=900'); }
-        if (action === 'new') await withIdle(async () => { await store.archive(); await change(() => newSession()); });
+        if (action === 'new') await withIdle(async () => { await store.archive(); await change(() => newSession(activePersona())); });
         if (action === 'saved') await showSaved();
         if (action === 'adapt') await adapt();
         if (action === 'export') download('group-stories-backup.json', JSON.stringify(await store.read(), null, 2), 'application/json');
         if (action === 'transcript') {
             const s = await store.read();
-            const text = [s.title, s.opening, ...s.events.filter(e => e.kind !== 'influence').map(e => `${s.cast.find(c => c.id === e.speaker)?.name || 'Narrator'}: ${e.text}`)].filter(Boolean).join('\n\n');
+            const text = [s.title, s.opening, ...s.events.filter(e => e.kind !== 'influence').map(e => `${speakerName(s, e)}: ${e.text}`)].filter(Boolean).join('\n\n');
             download('group-stories-transcript.txt', text, 'text/plain');
         }
         if (action === 'import') $('[data-import]').click();
@@ -279,16 +348,17 @@ async function init() {
     open.append(el('span', 'fa-solid fa-people-group extensionsMenuExtensionButton'), el('span', '', 'Group Stories'));
     document.querySelector('#extensionsMenu').append(open);
     const account = getCurrentUserHandle();
-    store = createStore(account); await store.init();
+    store = createStore(account); await store.init(activePersona());
     coordinator = createCoordinator(store.database);
     channel = new BroadcastChannel(`group-stories-${account}`);
-    engine = new StoryEngine({ store, request, locks: coordinator, channel, status: text => { statusText = text; renderStatus(); refresh().catch(notify); } });
+    engine = new StoryEngine({ store, request, locks: coordinator, channel, status: text => { statusText = text; renderStatus(); if (!text.startsWith('Next reply in ')) refresh().catch(notify); } });
     channel.addEventListener('message', ({ data }) => {
         if (data.type === 'changed') refresh().catch(notify);
-        if (data.type === 'status') { statusText = data.text; renderStatus(); refresh().catch(notify); }
+        if (data.type === 'status') { statusText = data.text; renderStatus(); if (!data.text.startsWith('Next reply in ')) refresh().catch(notify); }
         if (data.type === 'pause') adaptationController?.abort();
     });
     mount(); refreshLibrary(); await refresh();
+    if (session.cast.length || session.events.length) { statusText = 'Ready. Story restored.'; renderStatus(); }
     const showWorkspace = guarded(async () => { refreshLibrary(); await refresh(); root.hidden = false; });
     const toggleWorkspace = () => {
         if (root.hidden) showWorkspace();

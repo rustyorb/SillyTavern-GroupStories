@@ -1,4 +1,4 @@
-import { newSession } from './core.js';
+import { newSession, upgradeSession } from './core.js';
 
 export function createStore(account) {
     // IndexedDB survives reloads; account-specific database prevents cross-account story access in a shared browser.
@@ -25,7 +25,7 @@ export function createStore(account) {
             tx.onabort = () => reject(tx.error || new Error('Story save was interrupted.'));
         });
     }
-    const read = () => access('readonly', s => s.get('active'));
+    const read = async () => { const value = await access('readonly', s => s.get('active')); return value && upgradeSession(value); };
     // One read/write transaction serializes read-edit-save across tabs, including over LAN HTTP.
     async function update(edit, lease) {
         const db = await database;
@@ -37,7 +37,7 @@ export function createStore(account) {
                 const request = tx.objectStore('stories').get('active');
                 request.onsuccess = () => {
                     try {
-                        const current = request.result;
+                        const current = request.result && upgradeSession(request.result);
                         const replacement = edit(current);
                         if (replacement?.then) throw new Error('Story edits must be synchronous.');
                         tx.objectStore('stories').put(replacement || current, 'active');
@@ -58,9 +58,9 @@ export function createStore(account) {
     }
     return {
         read, update, database,
-        async init() { await update(current => current || newSession()); },
+        async init(participant = null) { await update(current => current || newSession(participant)); },
         async list() { const all = (await access('readonly', s => s.getAll())).filter(x => x?.id); return [...new Map(all.map(s => [s.id, s])).values()]; },
         async archive() { const value = await read(); await access('readwrite', s => s.put(value, value.id)); },
-        async load(id) { const value = await access('readonly', s => s.get(id)); if (!value) throw new Error('Story not found.'); await this.update(() => value); },
+        async load(id) { const value = await access('readonly', s => s.get(id)); if (!value) throw new Error('Story not found.'); await this.update(() => upgradeSession(value)); },
     };
 }

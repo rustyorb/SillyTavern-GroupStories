@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession } from '../core.js';
+import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession, speakerName, upgradeSession } from '../core.js';
 import { StoryEngine } from '../engine.js';
 
 function story() {
@@ -62,7 +62,7 @@ function harness(request) {
     let held = false;
     const locks = { request: async (name, options, callback) => { if (held) return callback(null); held = true; try { return await callback({ name }); } finally { held = false; } } };
     const channel = { addEventListener: (_, cb) => listeners.push(cb), postMessage: data => { for (const callback of listeners) callback({ data }); } };
-    const engine = new StoryEngine({ store, request, locks, channel, status: text => reports.push(text) });
+    const engine = new StoryEngine({ store, request, locks, channel, status: text => reports.push(text), wait: async () => {} });
     return { engine, store, locks, channel, reports, get state() { return state; } };
 }
 test('bounded run commits exactly the requested turns and honors character profiles', async () => {
@@ -104,4 +104,51 @@ test('pause before an asynchronous lock grant prevents that run from starting', 
     h.engine.locks = { request: (name, options, callback) => new Promise(resolve => { grant = () => resolve(callback({ name })); }) };
     const pending = h.engine.run(1); h.engine.pause(); grant(); await pending;
     assert.equal(calls, 0); assert.equal(h.state.events.length, 0);
+});
+test('persona participates in character context, macros resolve, and director never chooses the human', () => {
+    const s = story(); s.participant = { id: 'alex.png', name: 'Alex', avatar: 'alex.png', description: 'A documentary photographer.' };
+    s.cast[0].description = '{{char}} went to college with {{user}}.';
+    addEvent(s, { kind: 'user', text: 'Can we talk about last summer?' });
+    const prompt = JSON.stringify(characterPrompt(s, s.cast[0]));
+    assert.match(prompt, /Alice went to college with Alex/); assert.match(prompt, /documentary photographer/);
+    assert.match(prompt, /Never write their dialogue/); assert.match(prompt, /Can we talk/);
+    assert.doesNotMatch(prompt, /No user character exists/);
+    const director = JSON.parse(directorPrompt(s)[1].content);
+    assert.equal(director.humanParticipant, 'Alex'); assert.ok(director.eligible.every(c => c.id !== 'alex.png'));
+    assert.equal(director.recentPublicEvents[0].speaker, 'Alex');
+});
+test('human message identities persist when switching persona and absent characters do not hear them', () => {
+    const s = story(); s.participant = { id: 'a', name: 'Alex', avatar: '', description: '' }; s.cast[1].present = false;
+    const event = addEvent(s, { kind: 'user', text: 'Please keep the envelope safe.' });
+    s.participant = { id: 'b', name: 'Blair', avatar: '', description: '' };
+    assert.equal(speakerName(s, event), 'Alex'); assert.equal(event.persona.id, 'a');
+    assert.equal(visibleEvents(s, s.cast[1].id).length, 0);
+    assert.equal(validateSession(JSON.parse(JSON.stringify(s))).events[0].persona.name, 'Alex');
+});
+test('old backups retain observer mode and receive safe pacing defaults', () => {
+    const s = story(); s.mode = 'narrate'; delete s.replyDelay; delete s.participant;
+    validateSession(s); assert.equal(s.replyDelay, 5); assert.equal(s.participant, null); assert.equal(s.mode, 'narrate');
+    assert.equal(upgradeSession(s).id, s.id);
+    s.replyDelay = -1; assert.throws(() => validateSession(s), /delay/);
+    const t = story(); assert.throws(() => addEvent(t, { kind: 'user', text: 'Hello.' }), /persona/);
+});
+test('reply timer waits between turns, not before Next turn or after the final turn', async () => {
+    let calls = 0; const waited = []; const h = harness(async () => { calls++; return 'A reply.'; });
+    h.engine.wait = async ms => { if (ms > 50) { assert.equal(calls, 1); waited.push(ms); } };
+    await h.store.update(s => { s.replyDelay = 2; }); await h.engine.run(2);
+    assert.deepEqual(waited, [1000, 1000]); assert.equal(calls, 2); assert.ok(h.reports.some(s => /Next reply in 2s/.test(s)));
+});
+test('pause during a long reply timer releases immediately without starting another request', async () => {
+    let entered; const waiting = new Promise(resolve => { entered = resolve; }); let calls = 0;
+    const h = harness(async () => { calls++; return 'A reply.'; });
+    h.engine.wait = ms => { if (ms > 50) { entered(); return new Promise(() => {}); } return Promise.resolve(); };
+    await h.store.update(s => { s.replyDelay = 300; });
+    const run = h.engine.run(0); await waiting; h.engine.pause(); await run;
+    assert.equal(calls, 1); assert.equal(h.state.events.length, 1); assert.equal(h.engine.running, false);
+});
+test('pause releases run ownership even when a provider never resolves', async () => {
+    let entered; const started = new Promise(resolve => { entered = resolve; });
+    const h = harness(async () => { entered(); return new Promise(() => {}); });
+    const run = h.engine.run(1); await started; h.engine.pause(); await run;
+    assert.equal(h.engine.running, false); assert.equal(h.state.events.length, 0);
 });

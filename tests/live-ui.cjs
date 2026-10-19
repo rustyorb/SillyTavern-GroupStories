@@ -34,6 +34,8 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await page.locator('#group-stories-workspace').waitFor({ state: 'visible' });
         await page.evaluate(() => {
             const c = SillyTavern.getContext();
+            c.powerUserSettings.personas['gs-test-alex.png'] = 'Alex';
+            c.powerUserSettings.persona_descriptions['gs-test-alex.png'] = { description: 'A freelance photojournalist who knows both friends.' };
             c.characters.push({ name: 'Mira', avatar: 'gs-test-mira.png', description: 'A reserved nurse, 31, practical and observant.', personality: 'Wry, patient, dislikes being cornered.', first_mes: 'Unadapted source greeting.' },
                 { name: 'Jonah', avatar: 'gs-test-jonah.png', description: 'A restaurant manager, 34, grew up with Mira.', personality: 'Talks around uncomfortable subjects.' });
             const service = c.ConnectionManagerRequestService;
@@ -41,7 +43,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
             service.constructPrompt = messages => messages;
             window.gsCalls = [];
             service.sendRequest = async (profile, messages, tokens, custom) => {
-                gsCalls.push({ profile, messages, tokens });
+                gsCalls.push({ profile, messages, tokens, at: performance.now() });
                 if (window.gsHold) return new Promise(resolve => { window.gsResolve = resolve; });
                 if (messages[0].content.startsWith('Choose the next speaker')) return { content: JSON.parse(messages[1].content).eligible[0].id };
                 if (messages[0].content.startsWith('Adapt character')) return { content: 'A diner in 2025, just before closing. Mira and Jonah are meeting after years apart.' };
@@ -84,6 +86,12 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Selected character retains name and thumbnail in the picker', await p.locator('#select2-gs-library-container img').count() === 1 && (await p.locator('#select2-gs-library-container').innerText()).includes('Mira'));
         await p.getByRole('button', { name: '+ Add to cast' }).click();
         await chooseCharacter(p, 'Jonah'); await p.getByRole('button', { name: '+ Add to cast' }).click();
+        await p.getByRole('button', { name: 'Read Mira character card', exact: true }).click();
+        await p.locator('.gs-character-card').waitFor();
+        check('Cast portrait/name opens a readable card with description, personality and source greeting', (await p.locator('.gs-character-card').innerText()).includes('A reserved nurse') && (await p.locator('.gs-character-card').innerText()).includes('Wry, patient') && (await p.locator('.gs-character-card').innerText()).includes('Unadapted source greeting'));
+        check('Character card is read-only', await p.locator('.gs-character-card input, .gs-character-card textarea, .gs-character-card [contenteditable=true]').count() === 0);
+        await p.screenshot({ path: path.join(out, 'group-stories-readable-card.png') });
+        await p.getByRole('button', { name: 'Close card', exact: true }).click();
         await p.getByLabel('Mira connection profile').selectOption('gs-test-a');
         await p.getByLabel('Jonah connection profile').selectOption('gs-test-b');
         await p.getByLabel('Story title').fill('After closing'); await p.getByLabel('Story title').press('Tab');
@@ -93,6 +101,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await p.locator('[data-field=target]').selectOption({ label: 'Mira' });
         await p.getByLabel('Your direction').fill('You lost your job this morning; Jonah does not know.');
         await p.getByRole('button', { name: 'Add direction' }).click();
+        await p.locator('.gs-private').waitFor();
         check('Private direction labeled in human transcript', await p.locator('.gs-private').count() === 1);
         await p.locator('[data-field=nextSpeaker]').selectOption({ label: 'Mira' });
         await p.getByRole('button', { name: 'Next turn' }).click();
@@ -151,9 +160,12 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await setup(p);
         await p.locator('[data-field=directorProfile]').selectOption('gs-test-a');
         await p.locator('[data-field=turnLimit]').fill('2'); await p.locator('[data-field=turnLimit]').press('Tab');
+        await p.getByLabel('Seconds between replies').fill('1'); await p.getByLabel('Seconds between replies').press('Tab');
         await p.getByRole('button', { name: 'Play', exact: false }).click();
+        await p.locator('[data-status]').filter({ hasText: 'Next reply in 1s' }).waitFor();
         await p.locator('[data-status]').filter({ hasText: '2 turns completed' }).waitFor();
         check('Bounded Play with director performs two speaker choices and two character turns', await p.evaluate(() => gsCalls.length) === 4);
+        check('Configured interval shows countdown and delays the next model request', await p.evaluate(() => gsCalls[2].at - gsCalls[1].at >= 900));
         check('Director requests exclude private directions', await p.evaluate(() => gsCalls.filter(c => c.messages[0].content.startsWith('Choose the next speaker')).every(c => !JSON.stringify(c).includes('lost your job'))));
         const sceneBefore = await p.locator('[data-field=scene]').inputValue();
         await p.getByRole('button', { name: 'Adapt original setups' }).click();
@@ -181,6 +193,26 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await p.getByLabel('Your direction').fill('“I wanted to tell you something,” Mira says.'); await p.getByRole('button', { name: 'Add direction' }).click();
         await p.locator('.gs-event').last().filter({ hasText: 'wanted to tell you' }).waitFor();
         check('Speak as character records a contribution without a model request', await p.evaluate(() => gsCalls.length) === callsBeforeManual);
+        const nativeName = await p.evaluate(() => SillyTavern.getContext().name1);
+        await p.getByLabel('Your user persona').selectOption('gs-test-alex.png');
+        await p.waitForFunction(() => document.querySelector('[data-field=mode]').value === 'talk' && document.querySelector('[data-persona-summary]').textContent.includes('Alex'));
+        check('Existing SillyTavern persona can join without changing the host persona', (await p.locator('[data-field=mode]').inputValue()) === 'talk' && (await p.locator('[data-persona-summary]').innerText()).includes('Alex') && await p.evaluate(() => SillyTavern.getContext().name1) === nativeName);
+        await p.getByLabel('Seconds between replies').fill('30'); await p.getByLabel('Seconds between replies').press('Tab');
+        await p.getByRole('button', { name: 'Play', exact: false }).click();
+        await p.locator('[data-status]').filter({ hasText: 'Next reply in 30s' }).waitFor();
+        await p.getByLabel('Your direction').fill('Hey, you two. Did I miss something?');
+        await p.evaluate(() => { window.gsProfileElement = document.querySelector('.gs-person select'); });
+        await p.waitForTimeout(1100);
+        check('Countdown ticks preserve character controls and the unsent message', await p.evaluate(() => gsProfileElement === document.querySelector('.gs-person select')) && await p.getByLabel('Your direction').inputValue() === 'Hey, you two. Did I miss something?');
+        await p.getByRole('button', { name: 'Send & reply' }).click();
+        await p.locator('[data-status]').filter({ hasText: '1 turn completed' }).waitFor();
+        check('Sending as persona interrupts countdown, posts a human message and requests one reply', await p.locator('.gs-user-message').count() === 1 && (await p.locator('.gs-user-message').innerText()).includes('Alex · YOU') && (await p.locator('.gs-user-message').innerText()).includes('Did I miss something'));
+        check('AI prompt includes persona, user contribution and human-control boundary', await p.evaluate(() => { const text = JSON.stringify(gsCalls.at(-1)); return text.includes('freelance photojournalist') && text.includes('Did I miss something') && text.includes('Never write their dialogue'); }));
+        await p.getByLabel('Seconds between replies').fill('1'); await p.getByLabel('Seconds between replies').press('Tab');
+        await p.waitForFunction(async () => { const { createStore } = await import('/scripts/extensions/third-party/group-stories/storage.js'); return (await createStore('default-user').read()).replyDelay === 1; });
+        await setup(p);
+        check('Persona, human transcript and reply interval survive reload', await p.getByLabel('Your user persona').inputValue() === 'gs-test-alex.png' && await p.getByLabel('Seconds between replies').inputValue() === '1' && await p.locator('.gs-user-message').count() === 1);
+        await p.locator('[data-transcript] .gs-event').last().scrollIntoViewIfNeeded();
         await p.screenshot({ path: path.join(out, 'group-stories-desktop.png') });
         await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(100);
         check('Mobile workspace is visible', await p.locator('#group-stories-workspace').isVisible());
@@ -189,11 +221,17 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await p.screenshot({ path: path.join(out, 'group-stories-mobile.png') });
         await chooseCharacter(p, 'Mira');
         check('Mobile character picker searches and selects a portrait without horizontal overflow', await p.locator('#select2-gs-library-container img').count() === 1 && await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
+        await p.getByRole('button', { name: 'Read Mira character card', exact: true }).click();
+        check('Read-only character card is accessible at phone width', await p.locator('.gs-character-card').isVisible() && await p.locator('.gs-character-card').evaluate(e => e.getBoundingClientRect().width <= 390));
+        await p.getByRole('button', { name: 'Close card', exact: true }).click();
+        await p.getByLabel('Your user persona').selectOption('');
+        await p.waitForFunction(() => document.querySelector('[data-field=mode]').value === 'narrate');
+        check('Observer mode remains available alongside persona participation', (await p.locator('[data-persona-summary]').innerText()).includes('without joining'));
         const concurrency = await p.evaluate(async () => {
             const { createStore } = await import('/scripts/extensions/third-party/group-stories/storage.js');
             const { createCoordinator } = await import('/scripts/extensions/third-party/group-stories/coordinator.js');
             const store = createStore('isolated-coordination-check'); await store.init();
-            const legacy = structuredClone(await store.read()); legacy.title = 'A story from v0.1.0';
+            const legacy = structuredClone(await store.read()); legacy.title = 'A story from v0.1.0'; legacy.mode = 'narrate'; delete legacy.replyDelay; delete legacy.participant;
             await new Promise((resolve, reject) => {
                 const request = indexedDB.open('group-stories-v1-isolated-migration-check', 1);
                 request.onupgradeneeded = () => request.result.createObjectStore('stories');
@@ -206,7 +244,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
                 };
             });
             const migrated = createStore('isolated-migration-check'); await migrated.init();
-            const migration = (await migrated.read()).id === legacy.id && (await migrated.read()).title === legacy.title;
+            const migration = (await migrated.read()).id === legacy.id && (await migrated.read()).title === legacy.title && (await migrated.read()).replyDelay === 5 && (await migrated.read()).participant === null;
             const peerStore = createStore('isolated-coordination-check'); await peerStore.init();
             await store.update(s => { s.counter = 0; });
             await Promise.all(Array.from({ length: 100 }, (_, i) => (i % 2 ? peerStore : store).update(s => { s.counter++; })));

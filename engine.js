@@ -1,8 +1,17 @@
 import { addEvent, characterPrompt, chooseSpeaker, directorPrompt } from './core.js';
 
+export function abortable(promise, signal) {
+    return new Promise((resolve, reject) => {
+        const abort = () => reject(new DOMException('Paused', 'AbortError'));
+        signal.addEventListener('abort', abort, { once: true });
+        Promise.resolve(promise).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+        if (signal.aborted) abort();
+    });
+}
+
 export class StoryEngine {
-    constructor({ store, request, locks, status, channel }) {
-        Object.assign(this, { store, request, locks, status, channel });
+    constructor({ store, request, locks, status, channel, wait = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+        Object.assign(this, { store, request, locks, status, channel, wait });
         this.running = false;
         this.pauseVersion = 0;
         this.controller = null;
@@ -35,8 +44,22 @@ export class StoryEngine {
                 const sessionId = initial.id;
                 for (; !this.stopped && (count === 0 || completed < count);) {
                     await lock.assertHeld?.();
-                    const session = await this.store.read();
+                    let session = await this.store.read();
                     if (session.id !== sessionId) break;
+                    if (completed > 0) {
+                        const delay = Math.max(0, Math.min(300, session.replyDelay ?? 5));
+                        let remaining = delay;
+                        while (remaining > 0 && !this.stopped) {
+                            this.report(`Next reply in ${Math.ceil(remaining)}s · Pause to stop`);
+                            const tick = Math.min(1, remaining);
+                            await abortable(this.wait(tick * 1000), this.controller.signal);
+                            remaining -= tick;
+                            await lock.assertHeld?.();
+                        }
+                        if (this.stopped) break;
+                        session = await this.store.read();
+                        if (session.id !== sessionId) break;
+                    }
                     if (!session.scene.trim()) throw new Error('Set the shared scene before starting.');
                     const present = session.cast.filter(c => c.present);
                     if (!present.length) throw new Error('Choose your cast first.');
@@ -44,14 +67,14 @@ export class StoryEngine {
                     let speaker = chooseSpeaker(session);
                     if (!session.nextSpeaker && session.directorProfile) {
                         this.report('Director is choosing the next speaker…');
-                        const answer = (await this.request(session.directorProfile, directorPrompt(session), 100, this.controller.signal)).trim().replace(/^['"`\s]+|['"`\s]+$/g, '');
+                        const answer = (await abortable(this.request(session.directorProfile, directorPrompt(session), 100, this.controller.signal), this.controller.signal)).trim().replace(/^['"`\s]+|['"`\s]+$/g, '');
                         speaker = present.find(c => c.id === answer);
                         if (!speaker) throw new Error('The director did not return a valid character id. Choose a speaker manually or try again.');
                     }
                     if (this.stopped) break;
                     await lock.assertHeld?.();
                     this.report(`${speaker.name} is responding…`);
-                    const text = await this.request(speaker.profile, characterPrompt(session, speaker), session.maxTokens, this.controller.signal);
+                    const text = await abortable(this.request(speaker.profile, characterPrompt(session, speaker), session.maxTokens, this.controller.signal), this.controller.signal);
                     if (this.stopped || this.controller.signal.aborted) break;
                     if (!text?.trim()) throw new Error(`${speaker.name}'s connection returned an empty response.`);
                     await this.store.update(current => {
@@ -65,7 +88,7 @@ export class StoryEngine {
                     this.channel.postMessage({ type: 'changed' });
                     this.report(`Completed ${completed} turn${completed === 1 ? '' : 's'}`);
                     // Allow control events and pending pause messages between requests.
-                    await new Promise(resolve => setTimeout(resolve, 300));
+                    await abortable(this.wait(50), this.controller.signal);
                 }
                 this.report(this.stopped ? 'Paused. Ready when you are.' : `Ready · ${completed} turn${completed === 1 ? '' : 's'} completed`);
             } catch (error) {

@@ -2,9 +2,9 @@
 
 **A cast. A scene. See what happens.**
 
-A separate SillyTavern workspace for grounded, contemporary ensemble stories. Choose the people, give them a starting situation, and watch their relationships develop—without having to join as a user character.
+A separate SillyTavern workspace for grounded, contemporary ensemble stories. Choose the people, give them a starting situation, and join the conversation using your SillyTavern persona—or watch and direct as narrator.
 
-You can step in as narrator, privately influence one character, or write a character's next contribution yourself. Let the story run for a few turns, pause to change direction, then pick it up again.
+Chat as yourself in the story, step in as narrator, privately influence one character, or write a character's next contribution yourself. Set a comfortable reply interval, let the story run for a few turns, and pause whenever you want to change direction.
 
 [Install](#install) · [Start a story](#start-a-story) · [Privacy and limits](#privacy-model-and-limits) · [Verification](docs/verification.md)
 
@@ -18,6 +18,9 @@ You can step in as narrator, privately influence one character, or write a chara
 | --- | --- |
 | **Cast & connections** | Import people from your character library and choose a different connection profile for each. |
 | **Play / Pause / Next turn** | Watch a bounded run, continue until paused, or advance one contribution at a time. |
+| **Between replies** | Set a 0–300 second interval between automatic replies, with a visible countdown. Default: 5 seconds. |
+| **Chat as me** | Choose an existing SillyTavern persona, post as that person, and get one character reply. The AI is instructed to leave your words and actions to you. |
+| **View character card** | Click a cast portrait/name or its card link to read the character's saved description, personality, examples and original setup. |
 | **Narrate** | Introduce a shared event or steer the scene without becoming a character. |
 | **Privately influence** | Give one character motivation or knowledge that stays out of other characters' prompts. |
 | **Speak as character** | Write someone's dialogue or action yourself. |
@@ -50,13 +53,19 @@ For local development, copy `manifest.json`, `index.js`, `core.js`, `engine.js`,
 
 Use SillyTavern's extension updater for this repository, then reload every open Group Stories tab. Version **0.1.1** fixes the original LAN HTTP startup restriction. On the first update from 0.1.0, close any older tabs if prompted so the saved-story database can upgrade. Existing stories are preserved.
 
+Version **0.2.0** adds personas, reply pacing and readable character cards. New stories start with your active persona. Existing narrator-only stories keep their original setup; choose a persona under **You in the story** to join one. Older stories gain the default five-second reply interval.
+
 ## Start a story
 
-1. Open the character picker in **The cast**. Search by name and choose a character by their name and portrait, then click **Add to cast**. Repeat for the rest of the cast. The picker uses SillyTavern's existing Select2 widget and native avatar thumbnails, including on mobile.
-2. Select a connection profile under each character. Connections are used independently without switching your main SillyTavern connection.
-3. Write the shared scene and optional opening. Original character greetings are not inserted. **Adapt original setups…** can draft a coherent shared premise for you to review and edit before using it; this makes a model request with the chosen director or first configured character profile.
-4. Press **Next turn** for one contribution or **Play** for the selected number of turns. Choose `0` to continue until paused.
-5. Use **Narrate** for shared events, **Privately influence** for one character's motivation or knowledge, or **Speak as character** to write a contribution yourself. The mode and recipient are remembered per story.
+1. Under **You in the story**, choose your SillyTavern persona, or select **Observe as narrator**. The selection applies to this story without switching your main SillyTavern persona. Your selected name and public persona description become part of character context.
+2. Open the character picker in **The cast**. Search by name and portrait, then click **Add to cast**. Repeat for the rest of the cast. Click a cast member's name/portrait or **View character card** to read their information.
+3. Select a connection profile under each character. Connections are used independently without switching your main SillyTavern connection.
+4. Write the shared scene and optional opening. Original character greetings are not inserted. **Adapt original setups…** can draft a shared premise for you to review; it includes your persona when you participate. This makes a model request using the director or first configured character profile.
+5. Use **Chat as me → Send & reply** to post your message and request one response. Sending during an automatic run stops that run, discards any in-flight stale reply, and starts one response to your new message.
+6. Press **Next turn** for one contribution or **Play** for the selected number of turns. Run `0` turns to continue until paused. **Between replies** controls the delay between automatic replies; Next turn and the first reply start immediately. Pause cancels the countdown immediately. A delay change applies to the next interval, not an interval already counting down.
+7. Switch the composer to **Narrate** for shared events, **Privately influence** for one character's motivation or knowledge, or **Speak as character** to write an AI cast member's contribution yourself. The mode and recipient are remembered per story.
+
+Your messages retain the persona name used when you sent them, even if you later choose a different persona. Changing persona after a story starts records a public departure/arrival. The character-card reader shows the saved story snapshot and cannot edit the original library card; reusing a card does not automatically import its separate system prompts into generation.
 
 Choose **Who responds next?** for a one-turn speaker override. An optional director profile chooses speakers based on public story events. Without a director, selection varies while avoiding immediate repeats. The character can respond with dialogue, action or silence expressed in prose.
 
