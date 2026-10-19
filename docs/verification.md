@@ -1,5 +1,13 @@
 # Verification history
 
+## v0.1.2 — Native launchers and portrait picker — 2026-10-19
+
+Group Stories now has a native-styled top-bar launcher with a group-of-people icon, placed beside Creative Studio's feather when present. The wand entry uses SillyTavern's standard menu row and Font Awesome icon. No settings drawer was added. Both launchers open the same workspace, and keyboard activation works on the top-bar icon.
+
+The library picker uses SillyTavern's existing Select2 widget and `getThumbnailUrl('avatar', avatar)` to display names and portraits in search results and the selected value. Search works at desktop and mobile viewport widths. Character names are rendered as text nodes, and thumbnail paths come from the host helper.
+
+Verification uses the local SillyTavern only, through the ordinary-HTTP test hostname mapped to 127.0.0.1. All **37 UI checks passed**, covering native launcher appearance and keyboard access, actual wand-menu opening, portrait search and selection, mobile selection without horizontal overflow, and the existing generation/privacy/storage workflows. All **13 engine tests passed**. No Group Stories runtime errors or unexplained console errors were recorded. Browser plugin was not available; regular Playwright was used. Provider replies were simulated; no real model requests were made.
+
 ## v0.1.1 — LAN HTTP compatibility — 2026-10-19
 
 The v0.1.0 startup failure was reproduced at `http://group-stories-lan.test:8123/`, mapped by Chromium only to the dedicated local server at 127.0.0.1. The browser reported `isSecureContext === false`, `navigator.locks === undefined` and `crypto.randomUUID === undefined`; no workspace mounted. This reproduces the browser restrictions of ordinary LAN HTTP without touching another SillyTavern instance or changing server/network configuration.

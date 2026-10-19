@@ -51,13 +51,39 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         });
         await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     }
+    async function chooseCharacter(page, name) {
+        await page.locator('#select2-gs-library-container').click();
+        await page.locator('#group-stories-workspace .select2-search__field').fill(name);
+        await page.locator('#select2-gs-library-results').getByRole('option', { name, exact: true }).click();
+    }
     try {
         const p = await ctx.newPage(); await setup(p);
+        await p.getByRole('button', { name: 'Close Group Stories', exact: true }).click();
+        const launcher = p.getByRole('button', { name: 'Open Group Stories', exact: true });
+        check('Native top-bar launcher is visible beside Creative Studio', await launcher.isVisible() && await p.locator('#gs-top-button').count() === 1);
+        await launcher.focus(); await launcher.press('Enter');
+        await p.locator('#group-stories-workspace').waitFor({ state: 'visible' });
+        check('Top-bar launcher opens workspace with keyboard access', await p.locator('#group-stories-workspace').isVisible());
+        check('Wand entry uses native menu row and icon', await p.locator('#group-stories-open').evaluate(e => e.classList.contains('list-group-item') && !!e.querySelector('.extensionsMenuExtensionButton.fa-people-group') && !e.classList.contains('menu_button')));
+        await p.getByRole('button', { name: 'Close Group Stories', exact: true }).click();
+        await p.locator('#extensionsMenuButton').click();
+        await p.locator('#group-stories-open').waitFor({ state: 'visible' });
+        await p.locator('#group-stories-open').click();
+        await p.locator('#group-stories-workspace').waitFor({ state: 'visible' });
+        check('Native wand menu entry opens the same workspace', await p.locator('#group-stories-workspace').count() === 1);
         if (lan) check('LAN HTTP works with secure context, Web Locks and randomUUID all unavailable', await p.evaluate(() => !isSecureContext && !navigator.locks && !crypto.randomUUID));
         check('Local host identity and nonblank workspace', await p.title() === 'SillyTavern' && await p.locator('.gs-empty').isVisible());
         await p.screenshot({ path: path.join(out, 'group-stories-empty.png') });
-        await p.locator('[data-library]').selectOption('gs-test-mira.png'); await p.getByRole('button', { name: '+ Add to cast' }).click();
-        await p.locator('[data-library]').selectOption('gs-test-jonah.png'); await p.getByRole('button', { name: '+ Add to cast' }).click();
+        await p.locator('#select2-gs-library-container').click();
+        await p.locator('#group-stories-workspace .select2-search__field').fill('Mira');
+        const miraOption = p.locator('#select2-gs-library-results').getByRole('option', { name: 'Mira', exact: true });
+        await miraOption.waitFor();
+        check('Character search shows matching name with an avatar thumbnail', await miraOption.locator('img').count() === 1 && (await miraOption.locator('img').getAttribute('src')).includes('gs-test-mira.png') && await p.locator('#select2-gs-library-results').getByRole('option').count() === 1);
+        await p.screenshot({ path: path.join(out, 'group-stories-character-picker.png') });
+        await miraOption.click();
+        check('Selected character retains name and thumbnail in the picker', await p.locator('#select2-gs-library-container img').count() === 1 && (await p.locator('#select2-gs-library-container').innerText()).includes('Mira'));
+        await p.getByRole('button', { name: '+ Add to cast' }).click();
+        await chooseCharacter(p, 'Jonah'); await p.getByRole('button', { name: '+ Add to cast' }).click();
         await p.getByLabel('Mira connection profile').selectOption('gs-test-a');
         await p.getByLabel('Jonah connection profile').selectOption('gs-test-b');
         await p.getByLabel('Story title').fill('After closing'); await p.getByLabel('Story title').press('Tab');
@@ -161,6 +187,8 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Mobile workspace fills the viewport height', await p.locator('#group-stories-workspace').evaluate(e => e.getBoundingClientRect().height > 800));
         check('Mobile workspace stays within viewport width', await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
         await p.screenshot({ path: path.join(out, 'group-stories-mobile.png') });
+        await chooseCharacter(p, 'Mira');
+        check('Mobile character picker searches and selects a portrait without horizontal overflow', await p.locator('#select2-gs-library-container img').count() === 1 && await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
         const concurrency = await p.evaluate(async () => {
             const { createStore } = await import('/scripts/extensions/third-party/group-stories/storage.js');
             const { createCoordinator } = await import('/scripts/extensions/third-party/group-stories/coordinator.js');

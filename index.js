@@ -243,13 +243,40 @@ function mount() {
 function refreshLibrary() {
     const select = $('[data-library]');
     options(select, context().characters.map(c => ({ id: c.avatar, name: c.name })).sort((a, b) => a.name.localeCompare(b.name)), select.value, 'Choose a character…');
+    const $select = jQuery(select);
+    if (jQuery.fn.select2) {
+        if (!$select.hasClass('select2-hidden-accessible')) {
+            const portraitOption = item => {
+                if (!item.id) return item.text;
+                const row = el('span', 'gs-character-option');
+                const image = el('img', 'gs-picker-avatar');
+                image.src = context().getThumbnailUrl('avatar', item.id);
+                image.alt = ''; image.loading = 'lazy';
+                image.addEventListener('error', () => { image.hidden = true; }, { once: true });
+                row.append(image, el('span', '', item.text));
+                return jQuery(row);
+            };
+            $select.select2({
+                width: '100%', placeholder: 'Choose a character…',
+                dropdownParent: jQuery(root),
+                templateResult: portraitOption, templateSelection: portraitOption,
+            });
+            $select.on('select2:open', () => {
+                const search = root.querySelector('.select2-search__field');
+                if (search) { search.placeholder = 'Search characters…'; search.setAttribute('aria-label', 'Search characters'); search.focus(); }
+            });
+        }
+        $select.trigger('change.select2');
+    }
     try { profiles = context().ConnectionManagerRequestService.getSupportedProfiles(); }
     catch { profiles = []; }
 }
 async function init() {
     const ctx = context();
-    const open = el('button', 'menu_button', 'Group Stories');
+    const open = el('div', 'list-group-item flex-container flexGap5');
     open.id = 'group-stories-open'; open.title = 'Direct an ensemble story';
+    open.setAttribute('role', 'button'); open.tabIndex = 0;
+    open.append(el('span', 'fa-solid fa-people-group extensionsMenuExtensionButton'), el('span', '', 'Group Stories'));
     document.querySelector('#extensionsMenu').append(open);
     const account = getCurrentUserHandle();
     store = createStore(account); await store.init();
@@ -262,7 +289,30 @@ async function init() {
         if (data.type === 'pause') adaptationController?.abort();
     });
     mount(); refreshLibrary(); await refresh();
-    open.onclick = guarded(async () => { refreshLibrary(); await refresh(); root.hidden = false; });
+    const showWorkspace = guarded(async () => { refreshLibrary(); await refresh(); root.hidden = false; });
+    const toggleWorkspace = () => {
+        if (root.hidden) showWorkspace();
+        else { jQuery($('[data-library]')).select2?.('close'); root.hidden = true; }
+    };
+    open.onclick = showWorkspace;
+    open.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); showWorkspace(); }
+    });
+    const holder = document.getElementById('top-settings-holder');
+    if (holder && !document.getElementById('gs-top-button')) {
+        const button = el('div', 'drawer'); button.id = 'gs-top-button';
+        const icon = el('div', 'drawer-icon fa-solid fa-people-group fa-fw closedIcon');
+        icon.title = 'Group Stories'; icon.setAttribute('role', 'button');
+        icon.setAttribute('aria-label', 'Open Group Stories'); icon.tabIndex = 0;
+        icon.addEventListener('click', toggleWorkspace);
+        icon.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleWorkspace(); }
+        });
+        button.append(icon);
+        const after = document.getElementById('cs-top-button') || document.getElementById('extensions-settings-button');
+        if (after?.parentElement === holder) after.after(button);
+        else holder.append(button);
+    }
     channel.postMessage({ type: 'hello' });
     if (new URL(location.href).searchParams.get('group-stories') === '1') root.hidden = false;
     window.addEventListener('pagehide', () => {

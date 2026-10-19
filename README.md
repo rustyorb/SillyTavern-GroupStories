@@ -40,7 +40,7 @@ Requires **SillyTavern 1.19 or later**, a browser supporting IndexedDB and Broad
    ```
 
 3. Install, then reload SillyTavern.
-4. Open **Group Stories** from the extensions/wand menu.
+4. Open **Group Stories** using the group-of-people icon in the top bar, or its icon-and-label entry in the wand menu.
 
 **No build step. No package installation.** The repository contains the ready-to-run JavaScript and CSS.
 
@@ -52,7 +52,7 @@ Use SillyTavern's extension updater for this repository, then reload every open 
 
 ## Start a story
 
-1. Select a character from your existing SillyTavern library and click **Add to cast**. Repeat for the rest of the cast.
+1. Open the character picker in **The cast**. Search by name and choose a character by their name and portrait, then click **Add to cast**. Repeat for the rest of the cast. The picker uses SillyTavern's existing Select2 widget and native avatar thumbnails, including on mobile.
 2. Select a connection profile under each character. Connections are used independently without switching your main SillyTavern connection.
 3. Write the shared scene and optional opening. Original character greetings are not inserted. **Adapt original setups…** can draft a coherent shared premise for you to review and edit before using it; this makes a model request with the chosen director or first configured character profile.
 4. Press **Next turn** for one contribution or **Play** for the selected number of turns. Choose `0` to continue until paused.
