@@ -3,12 +3,16 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const out = path.resolve(process.env.GROUP_STORIES_UI_OUTPUT || 'work/live-ui');
+// This hostname resolves only to the local test server, but is an insecure browser origin like LAN HTTP.
+const lan = process.env.GROUP_STORIES_TEST_LAN === '1';
+const base = lan ? 'http://group-stories-lan.test:8123/' : 'http://127.0.0.1:8123/';
 fs.mkdirSync(out, { recursive: true });
 const results = [];
 const errors = [];
+const hostNotices = [];
 const check = (name, value) => { assert.ok(value, name); results.push(name); console.log('PASS', name); };
 (async () => {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true, args: lan ? ['--host-resolver-rules=MAP group-stories-lan.test 127.0.0.1', '--no-proxy-server'] : [] });
     const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
     await ctx.route('**/thumbnail**', route => {
         if (route.request().url().includes('gs-test-')) return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=', 'base64') });
@@ -16,9 +20,17 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
     });
     async function setup(page) {
         page.setDefaultTimeout(15000);
-        page.on('pageerror', error => errors.push(error.message));
-        page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-        await page.goto('http://127.0.0.1:8123/?group-stories=1');
+        page.on('pageerror', error => {
+            // Host resize code walks stale autocomplete widgets; retain its exact stack separately.
+            if (error.message.includes('cannot call methods on autocomplete prior to initialization') && error.stack?.includes('/scripts/power-user.js:3133:')) hostNotices.push(error.stack);
+            else errors.push(error.stack || error.message);
+        });
+        page.on('console', message => {
+            if (message.type() !== 'error') return;
+            if (lan && message.text().startsWith('The Cross-Origin-Opener-Policy header has been ignored')) hostNotices.push(message.text());
+            else errors.push(message.text());
+        });
+        await page.goto(base + '?group-stories=1');
         await page.locator('#group-stories-workspace').waitFor({ state: 'visible' });
         await page.evaluate(() => {
             const c = SillyTavern.getContext();
@@ -41,6 +53,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
     }
     try {
         const p = await ctx.newPage(); await setup(p);
+        if (lan) check('LAN HTTP works with secure context, Web Locks and randomUUID all unavailable', await p.evaluate(() => !isSecureContext && !navigator.locks && !crypto.randomUUID));
         check('Local host identity and nonblank workspace', await p.title() === 'SillyTavern' && await p.locator('.gs-empty').isVisible());
         await p.screenshot({ path: path.join(out, 'group-stories-empty.png') });
         await p.locator('[data-library]').selectOption('gs-test-mira.png'); await p.getByRole('button', { name: '+ Add to cast' }).click();
@@ -79,7 +92,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         const before = await peer.evaluate(() => gsCalls.length);
         await peer.getByRole('button', { name: 'Next turn' }).click();
         await peer.locator('[data-status]').filter({ hasText: 'Already running' }).waitFor();
-        check('Browser Web Lock blocks duplicate generation from another view', await peer.evaluate(() => gsCalls.length) === before);
+        check('Database coordination blocks duplicate generation from another view', await peer.evaluate(() => gsCalls.length) === before);
         const eventCount = await p.locator('.gs-event').count();
         await peer.getByRole('button', { name: 'Pause' }).click();
         await p.waitForTimeout(100); await p.evaluate(() => { gsResolve({ content: 'SHOULD_NEVER_APPEAR' }); gsHold = false; });
@@ -148,8 +161,59 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Mobile workspace fills the viewport height', await p.locator('#group-stories-workspace').evaluate(e => e.getBoundingClientRect().height > 800));
         check('Mobile workspace stays within viewport width', await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
         await p.screenshot({ path: path.join(out, 'group-stories-mobile.png') });
-        check('No page runtime errors or console errors', errors.length === 0);
-        fs.writeFileSync(path.join(out, 'ui-check-results.json'), JSON.stringify({ results, errors }, null, 2));
+        const concurrency = await p.evaluate(async () => {
+            const { createStore } = await import('/scripts/extensions/third-party/group-stories/storage.js');
+            const { createCoordinator } = await import('/scripts/extensions/third-party/group-stories/coordinator.js');
+            const store = createStore('isolated-coordination-check'); await store.init();
+            const legacy = structuredClone(await store.read()); legacy.title = 'A story from v0.1.0';
+            await new Promise((resolve, reject) => {
+                const request = indexedDB.open('group-stories-v1-isolated-migration-check', 1);
+                request.onupgradeneeded = () => request.result.createObjectStore('stories');
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    const tx = request.result.transaction('stories', 'readwrite');
+                    tx.objectStore('stories').put(legacy, 'active');
+                    tx.oncomplete = () => { request.result.close(); resolve(); };
+                    tx.onerror = () => reject(tx.error);
+                };
+            });
+            const migrated = createStore('isolated-migration-check'); await migrated.init();
+            const migration = (await migrated.read()).id === legacy.id && (await migrated.read()).title === legacy.title;
+            const peerStore = createStore('isolated-coordination-check'); await peerStore.init();
+            await store.update(s => { s.counter = 0; });
+            await Promise.all(Array.from({ length: 100 }, (_, i) => (i % 2 ? peerStore : store).update(s => { s.counter++; })));
+            const atomic = (await store.read()).counter === 100;
+            const a = createCoordinator(store.database, { ttl: 150, heartbeat: 100000 });
+            const b = createCoordinator(store.database, { ttl: 150, heartbeat: 100000 });
+            let oldLock, release, started;
+            const ready = new Promise(resolve => { started = resolve; });
+            const first = a.request('test-run', { ifAvailable: true }, async lock => {
+                oldLock = lock; started(); await new Promise(resolve => { release = resolve; });
+            });
+            await ready;
+            let blocked = false;
+            await b.request('test-run', { ifAvailable: true }, lock => { blocked = lock === null; });
+            await new Promise(resolve => setTimeout(resolve, 200));
+            let fenced = false, recovered = false;
+            await b.request('test-run', { ifAvailable: true }, async lock => {
+                if (!lock) throw new Error('Expired owner was not recoverable.');
+                try { await store.update(s => { s.title = 'STALE_OWNER_WRITE'; }, oldLock.lease); }
+                catch (error) { fenced = error.message.includes('no longer owns'); }
+                release(); await first;
+                await lock.assertHeld();
+                await peerStore.update(s => { s.title = 'NEW_OWNER_WRITE'; }, lock.lease);
+                recovered = (await store.read()).title === 'NEW_OWNER_WRITE';
+            });
+            return { migration, atomic, blocked, fenced, recovered };
+        });
+        check('100 simultaneous database edits retain every update', concurrency.atomic);
+        check('Database upgrade preserves stories saved by v0.1.0', concurrency.migration);
+        check('Database ownership is exclusive across independent coordinators', concurrency.blocked);
+        check('Expired owner cannot commit a late response', concurrency.fenced);
+        check('Expired owner releases without deleting replacement owner and recovery succeeds', concurrency.recovered);
+        if (errors.length) console.log('BROWSER ERRORS', JSON.stringify(errors));
+        check('No Group Stories runtime errors or unexplained console errors', errors.length === 0);
+        fs.writeFileSync(path.join(out, 'ui-check-results.json'), JSON.stringify({ results, errors, hostNotices }, null, 2));
         await peer.close();
     } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

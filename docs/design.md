@@ -10,7 +10,7 @@ The host API is read through `SillyTavern.getContext()` after APP_READY. Connect
 
 ## State and concurrency
 
-An account-scoped IndexedDB stores active and archived sessions. Browser-wide Web Locks serialize mutations and enforce a single generation owner. BroadcastChannel distributes pause, status and state-refresh messages across views. The optional separate window is another view of the same host origin; it never creates its own independent run. A browser reload restores saved state with generation stopped.
+An account-scoped IndexedDB stores active and archived sessions. As of v0.1.1, IndexedDB read/write transactions serialize mutations and claim exclusive generation ownership, including over ordinary LAN HTTP. A run lease lasts 12 seconds and renews every 2 seconds. Run commits validate their ownership token and expiry inside the same transaction as the story write, so an expired owner cannot append a late response. Releasing an old owner never deletes its replacement. The schema upgrade retains v0.1.0 stories. BroadcastChannel distributes pause, status and state-refresh messages across views. The optional separate window is another view of the same host origin; it never creates its own independent run. A browser reload restores saved state with generation stopped. This coordinates one browser/account/origin, not different devices.
 
 Every generated response is committed only if the story and its inputs still match the request snapshot. Cancellation marks the run stopped before aborting the provider and late responses are discarded. Provider errors stop with visible status. Generation reads current persisted state before every turn.
 

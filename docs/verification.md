@@ -1,4 +1,20 @@
-# v0.1.0 verification — 2026-10-19
+# Verification history
+
+## v0.1.1 — LAN HTTP compatibility — 2026-10-19
+
+The v0.1.0 startup failure was reproduced at `http://group-stories-lan.test:8123/`, mapped by Chromium only to the dedicated local server at 127.0.0.1. The browser reported `isSecureContext === false`, `navigator.locks === undefined` and `crypto.randomUUID === undefined`; no workspace mounted. This reproduces the browser restrictions of ordinary LAN HTTP without touching another SillyTavern instance or changing server/network configuration.
+
+Version 0.1.1 removes both dependencies. IndexedDB transactions serialize story edits, and a database ownership lease coordinates generation. IDs use `crypto.getRandomValues` where `randomUUID` is unavailable. A schema upgrade adds run coordination without replacing saved stories. A turn is saved only if the same database transaction confirms that the requesting view still owns an unexpired run lease.
+
+- Node tests: **13 passed**, including UUID generation without the secure-context API.
+- Ordinary HTTP browser checks: **30 passed**, including the full story flow, two-view exclusivity and pause, desktop/mobile layout, 100 concurrent edits, v0.1.0 story migration, stale-owner rejection, and replacement-owner recovery.
+- Localhost regression checks: **29 passed**, covering the same flow and coordination behavior in the browser's secure localhost context.
+- No Group Stories runtime errors or unexplained console errors. The HTTP run recorded Chromium's ignored host Cross-Origin-Opener-Policy header notice and an existing SillyTavern autocomplete resize error from `scripts/power-user.js:3133`; these are retained separately in the test results, rather than reported as a clean host console.
+- Real phone hardware and the user's headless machine were not accessed. Provider replies remained simulated in the isolated browser; no real provider generation was performed.
+
+To repeat the insecure-origin test, set `GROUP_STORIES_TEST_LAN=1` and run `tests/live-ui.cjs` with Playwright available. The hostname mapping still sends all requests only to the local test server. The test does not disable browser security or override `isSecureContext`.
+
+## v0.1.0 — 2026-10-19
 
 ## Environment
 

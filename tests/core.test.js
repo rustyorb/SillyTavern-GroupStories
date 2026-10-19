@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession } from '../core.js';
+import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession } from '../core.js';
 import { StoryEngine } from '../engine.js';
 
 function story() {
@@ -8,6 +8,18 @@ function story() {
     s.cast = ['Alice', 'Bea', 'Cole'].map(name => ({ ...importCharacter({ name, avatar: `${name}.png` }), profile: 'local' }));
     return s;
 }
+test('IDs remain unique v4 UUIDs when insecure HTTP does not expose randomUUID', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis.crypto, 'randomUUID');
+    try {
+        Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined, configurable: true });
+        const ids = Array.from({ length: 100 }, uid);
+        assert.equal(new Set(ids).size, 100);
+        for (const id of ids) assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    } finally {
+        if (descriptor) Object.defineProperty(globalThis.crypto, 'randomUUID', descriptor);
+        else delete globalThis.crypto.randomUUID;
+    }
+});
 test('private knowledge is absent from other character prompts and director, across subsequent public turns', () => {
     const s = story(); const [a, b] = s.cast;
     addEvent(s, { kind: 'influence', target: a.id, text: 'SECRET: you lost your job this morning.' });

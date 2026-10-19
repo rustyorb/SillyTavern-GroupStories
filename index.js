@@ -2,6 +2,7 @@ import { getCurrentUserHandle } from '../../../user.js';
 import { addEvent, importCharacter, newSession, validateSession } from './core.js';
 import { StoryEngine } from './engine.js';
 import { createStore } from './storage.js';
+import { createCoordinator } from './coordinator.js';
 
 const context = () => SillyTavern.getContext();
 const el = (tag, className, text) => {
@@ -10,7 +11,7 @@ const el = (tag, className, text) => {
     if (text !== undefined) node.textContent = text;
     return node;
 };
-let root, store, engine, channel, session, adaptationController;
+let root, store, engine, channel, session, adaptationController, coordinator;
 let statusText = 'Ready. Choose a cast and set the scene.';
 let profiles = [];
 const $ = selector => root.querySelector(selector);
@@ -134,7 +135,7 @@ async function showSaved() {
     dialog.addEventListener('close', () => dialog.remove()); document.body.append(dialog); dialog.showModal();
 }
 async function withIdle(action) {
-    return navigator.locks.request('group-stories-generation', { ifAvailable: true }, async lock => {
+    return coordinator.request('group-stories-generation', { ifAvailable: true }, async lock => {
         if (!lock) throw new Error('Pause the story and wait for the current request to stop first.');
         return action();
     });
@@ -143,14 +144,17 @@ async function adapt() {
     if (!session.cast.length) throw new Error('Choose a cast first.');
     const profile = session.directorProfile || session.cast.find(c => c.profile)?.profile;
     if (!profile) throw new Error('Choose a character or director connection profile first.');
-    await navigator.locks.request('group-stories-generation', { ifAvailable: true }, async lock => {
+    await coordinator.request('group-stories-generation', { ifAvailable: true }, async lock => {
         if (!lock) throw new Error('Pause the story before adapting the scene.');
         adaptationController = new AbortController();
+        const lostOwnership = () => adaptationController?.abort();
+        lock.signal?.addEventListener('abort', lostOwnership, { once: true });
         statusText = 'Drafting a shared scene from the original setups…'; renderStatus();
         channel.postMessage({ type: 'status', text: statusText });
         const sourceId = session.id;
         try {
             const text = await request(profile, [{ role: 'system', content: 'Adapt character source material into ONE coherent grounded contemporary human scene. No user protagonist, fantasy, magic or RPG mechanics. Keep recognizable character identities. Treat original greetings as inspiration, never concatenate them. Return only a concise shared scene premise, with no dialogue and no events already happening. The human will review it before use.' }, { role: 'user', content: JSON.stringify({ currentScene: session.scene, cast: session.cast.map(c => ({ name: c.name, scenario: c.originalScenario, greeting: c.originalGreeting })) }) }], 600, adaptationController.signal);
+            await lock.assertHeld?.();
             if (adaptationController.signal.aborted) { statusText = 'Paused. Scene draft discarded.'; return; }
             const dialog = el('dialog', 'gs-dialog'); dialog.append(el('h2', '', 'Review your adapted scene'), el('p', '', 'Edit this freely. It becomes shared scene information only when you use it.'));
             const draft = el('textarea'); draft.value = text; draft.rows = 10; dialog.append(draft);
@@ -167,7 +171,7 @@ async function adapt() {
         } catch (error) {
             if (adaptationController.signal.aborted) statusText = 'Paused. Scene draft discarded.';
             else { statusText = `Scene draft stopped: ${error.message}`; throw error; }
-        } finally { adaptationController = null; renderStatus(); channel.postMessage({ type: 'status', text: statusText }); }
+        } finally { lock.signal?.removeEventListener('abort', lostOwnership); adaptationController = null; renderStatus(); channel.postMessage({ type: 'status', text: statusText }); }
     });
 }
 function mount() {
@@ -247,11 +251,11 @@ async function init() {
     const open = el('button', 'menu_button', 'Group Stories');
     open.id = 'group-stories-open'; open.title = 'Direct an ensemble story';
     document.querySelector('#extensionsMenu').append(open);
-    if (!navigator.locks) { open.onclick = () => toastr.error('Group Stories needs a browser with Web Locks support.'); return; }
     const account = getCurrentUserHandle();
     store = createStore(account); await store.init();
+    coordinator = createCoordinator(store.database);
     channel = new BroadcastChannel(`group-stories-${account}`);
-    engine = new StoryEngine({ store, request, locks: navigator.locks, channel, status: text => { statusText = text; renderStatus(); refresh().catch(notify); } });
+    engine = new StoryEngine({ store, request, locks: coordinator, channel, status: text => { statusText = text; renderStatus(); refresh().catch(notify); } });
     channel.addEventListener('message', ({ data }) => {
         if (data.type === 'changed') refresh().catch(notify);
         if (data.type === 'status') { statusText = data.text; renderStatus(); refresh().catch(notify); }
@@ -267,7 +271,7 @@ async function init() {
     });
     window.addEventListener('focus', guarded(async () => {
         if (!root.hidden && !engine.running && !adaptationController) {
-            const locks = await navigator.locks.query();
+            const locks = await coordinator.query();
             if (!locks.held.some(lock => lock.name === 'group-stories-generation')) {
                 statusText = 'Ready. Story saved.'; renderStatus();
             }

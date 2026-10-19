@@ -28,7 +28,9 @@ You can step in as narrator, privately influence one character, or write a chara
 
 ## Install
 
-Requires **SillyTavern 1.19 or later**, a browser supporting Web Locks, IndexedDB and BroadcastChannel, and at least one supported Chat Completion or Text Completion profile in SillyTavern's **Connection Manager**. Chromium was tested; other supporting browsers have not yet been verified.
+Requires **SillyTavern 1.19 or later**, a browser supporting IndexedDB and BroadcastChannel, and at least one supported Chat Completion or Text Completion profile in SillyTavern's **Connection Manager**. Chromium was tested; other supporting browsers have not yet been verified.
+
+**Headless server? Connecting from your phone over the LAN?** Ordinary HTTP addresses such as `http://192.168.1.50:8000` are supported. Group Stories does not require HTTPS, Web Locks, browser flags or a certificate to open and coordinate its story runs.
 
 1. Open **Extensions → Install extension** in SillyTavern.
 2. Paste this repository URL:
@@ -42,7 +44,11 @@ Requires **SillyTavern 1.19 or later**, a browser supporting Web Locks, IndexedD
 
 **No build step. No package installation.** The repository contains the ready-to-run JavaScript and CSS.
 
-For local development, copy `manifest.json`, `index.js`, `core.js`, `engine.js`, `storage.js` and `style.css` into `data/<your-user>/extensions/group-stories/`, then reload. Only the dedicated local instance at `http://127.0.0.1:8123/` was used during development.
+For local development, copy `manifest.json`, `index.js`, `core.js`, `engine.js`, `storage.js`, `coordinator.js` and `style.css` into `data/<your-user>/extensions/group-stories/`, then reload. Development testing uses only the dedicated local SillyTavern on port 8123.
+
+### Updating
+
+Use SillyTavern's extension updater for this repository, then reload every open Group Stories tab. Version **0.1.1** fixes the original LAN HTTP startup restriction. On the first update from 0.1.0, close any older tabs if prompted so the saved-story database can upgrade. Existing stories are preserved.
 
 ## Start a story
 
@@ -60,7 +66,7 @@ Choose **Who responds next?** for a one-turn speaker override. An optional direc
 
 ## Saved stories and additional views
 
-Stories save automatically to IndexedDB in the current browser, separated by SillyTavern account. **New story** archives the previous story. **Saved stories** switches between them. **Window** opens the same SillyTavern origin in a separate window, with the same active story and synchronized controls. Web Locks enforce one generation loop per origin across views; Pause works from either view.
+Stories save automatically to IndexedDB in the current browser, separated by SillyTavern account. **New story** archives the previous story. **Saved stories** switches between them. **Window** opens the same SillyTavern origin in a separate window, with the same active story and synchronized controls. Database transactions and expiring run ownership enforce one generation owner across views of the same browser, account and origin; Pause works from either view. After a running tab crashes, ownership becomes available again within about 12 seconds. A stale tab cannot append its late response after another view takes over.
 
 This is browser-local storage, not server synchronization. A different browser, computer or origin does not share it. Export backups before clearing browser data. JSON story backups include identities, original setups, complete history, private directions and audience lists. Public text exports omit private directions, but include any secrets characters subsequently disclosed through public dialogue.
 
@@ -78,7 +84,7 @@ Private character-to-character conversations, automatic summaries/recall, World 
 
 Run `npm test` with Node.js 22 or later. No packages are required. Tests cover per-recipient privacy, absence, card/setup separation, turn limits, director errors, interruption, stale responses and shared run ownership.
 
-For the optional local UI check, make Playwright available to Node and run `node tests/live-ui.cjs`. Alternatively set `GROUP_STORIES_PLAYWRIGHT` to an existing Playwright package directory. The check targets only `http://127.0.0.1:8123/`, uses an isolated browser, injects temporary in-memory test characters and simulated provider responses, and writes evidence under `work/live-ui/`. `GROUP_STORIES_UI_OUTPUT` can select another evidence directory. It does not save test characters or connection profiles to the host.
+For the optional local UI check, make Playwright available to Node and run `node tests/live-ui.cjs`. Alternatively set `GROUP_STORIES_PLAYWRIGHT` to an existing Playwright package directory. The check targets only the local SillyTavern on port 8123, uses an isolated browser, injects temporary in-memory test characters and simulated provider responses, and writes evidence under `work/live-ui/`. `GROUP_STORIES_UI_OUTPUT` can select another evidence directory. Set `GROUP_STORIES_TEST_LAN=1` to use an ordinary HTTP test hostname mapped to 127.0.0.1; this verifies the insecure-origin path while still reaching only the dedicated local server. It does not save test characters or connection profiles to the host.
 
 UI verification uses the local SillyTavern with simulated character responses. No real credential-backed model generation was used during this version's verification. See `docs/verification.md` for the checked behaviors.
 
