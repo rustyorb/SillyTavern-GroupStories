@@ -57,6 +57,8 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
     }
     async function chooseCharacter(page, name) {
         await page.getByRole('tab', { name: 'Setup', exact: true }).click();
+        await page.locator('[data-setup-nav=cast]').click();
+        if (await page.locator('.gs-quick-picker').getAttribute('open') === null) await page.getByText('Quick character picker', { exact: true }).click();
         await page.locator('#select2-gs-library-container').click();
         await page.locator('#group-stories-workspace .select2-search__field').fill(name);
         await page.locator('#select2-gs-library-results').getByRole('option', { name, exact: true }).click();
@@ -81,15 +83,21 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await p.screenshot({ path: path.join(out, 'group-stories-empty.png') });
         check('Story view keeps preparation fields out of the conversation', await p.getByRole('tab', { name: 'Story', exact: true }).getAttribute('aria-selected') === 'true' && !await p.locator('[data-field=scene]').isVisible() && await p.getByLabel('Your direction').isVisible());
         await p.getByRole('tab', { name: 'Setup', exact: true }).click();
-        check('Setup exposes scene and persona controls in a separate panel', await p.locator('[data-field=scene]').isVisible() && await p.getByLabel('Your user persona').isVisible() && !await p.getByLabel('Your direction').isVisible());
+        check('Setup opens focused cast controls without unrelated scene fields', !await p.locator('[data-field=scene]').isVisible() && await p.getByLabel('Your user persona').isVisible() && !await p.getByLabel('Your direction').isVisible());
+        await p.locator('[data-setup-nav=scene]').click();
+        check('Scene section has a readable form width and selected navigation', await p.locator('[data-field=scene]').isVisible() && await p.locator('[data-field=scene]').evaluate(e => e.getBoundingClientRect().width >= 500) && await p.locator('[data-setup-nav=scene]').getAttribute('aria-pressed') === 'true' && !await p.getByLabel('Your user persona').isVisible());
+        await p.locator('[data-setup-nav=cast]').click();
+        check('Quick picker stays collapsed so adding characters has one main entry', !await p.locator('#select2-gs-library-container').isVisible());
         await p.getByLabel('Search character library').fill('Mira');
         check('Library browser filters names and uses larger portraits', await p.locator('.gs-library-tile').count() === 1 && await p.locator('.gs-library-portrait img').first().evaluate(e => e.getBoundingClientRect().width >= 70));
         await p.getByLabel('Search character library').fill('');
         await p.getByLabel('Sort character library').selectOption('favorites');
         check('Library can prioritize favorites', (await p.locator('.gs-library-tile').first().innerText()).includes('Mira'));
         await p.getByLabel('Sort character library').selectOption('recent');
-        check('Library can sort by recently added using native timestamps', (await p.locator('.gs-library-tile').first().innerText()).includes('Jonah'));
+        const recentNames = await p.locator('.gs-library-portrait strong').allTextContents();
+        check('Library can sort by recently added using native timestamps', recentNames.indexOf('Jonah') < recentNames.indexOf('Mira'));
         await p.getByLabel('Sort character library').selectOption('name');
+        await p.getByText('Quick character picker', { exact: true }).click();
         await p.locator('#select2-gs-library-container').click();
         await p.locator('#group-stories-workspace .select2-search__field').fill('Mira');
         const miraOption = p.locator('#select2-gs-library-results').getByRole('option', { name: 'Mira', exact: true });
@@ -120,10 +128,12 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Reset restores imported identity while keeping story rules and model', (await p.getByLabel('For this story — Mira').inputValue()).includes('PRIVATE_OVERRIDE_FERN') && await p.getByLabel('Mira connection profile').inputValue() === 'gs-test-a');
         await p.getByLabel('Mira story description').fill('A practical nurse meeting Alex for the first time.');
         await p.getByRole('button', { name: 'Save Mira story setup', exact: true }).click();
+        await p.locator('[data-setup-nav=scene]').click();
         await p.getByLabel('Shared story facts', { exact: true }).fill('PUBLIC_SETUP: Alex and Mira have never met.'); await p.getByLabel('Shared story facts', { exact: true }).press('Tab');
         await p.getByLabel('Story title').fill('After closing'); await p.getByLabel('Story title').press('Tab');
         await p.locator('[data-field=scene]').fill('A diner in 2025. Two old friends meet after a long silence.'); await p.locator('[data-field=scene]').press('Tab');
         await p.locator('[data-field=opening]').fill('The rain has finally stopped. Jonah turns the sign to CLOSED.'); await p.locator('[data-field=opening]').press('Tab');
+        await p.locator('[data-setup-nav=cast]').click();
         if (await miraSetup.locator('.gs-local-edits').getAttribute('open') !== null) await miraSetup.locator('.gs-local-edits>summary').click();
         await miraSetup.locator('.gs-person-heading').scrollIntoViewIfNeeded();
         await p.screenshot({ path: path.join(out, 'group-stories-setup.png') });
@@ -185,7 +195,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Reload restores story with generation stopped', await p.getByLabel('Story title').inputValue() === 'After closing' && await p.locator('.gs-event').count() === eventCount);
         // Export contains full backup; public export excludes private direction.
         await p.getByRole('tab', { name: 'Setup', exact: true }).click();
-        await p.getByText('Save & export', { exact: true }).click();
+        await p.locator('[data-setup-nav=files]').click();
         const [backup] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Export story backup' }).click()]);
         await backup.saveAs(path.join(out, 'ui-test-backup.json'));
         const parsed = JSON.parse(fs.readFileSync(path.join(out, 'ui-test-backup.json'), 'utf8'));
@@ -211,6 +221,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await setup(p);
         await p.locator('[data-field=nextSpeaker]').selectOption('');
         await p.getByRole('tab', { name: 'Setup', exact: true }).click();
+        await p.locator('[data-setup-nav=scene]').click();
         await p.locator('[data-field=directorProfile]').selectOption('gs-test-a');
         await p.locator('[data-field=turnLimit]').fill('2'); await p.locator('[data-field=turnLimit]').press('Tab');
         await p.getByLabel('Seconds between replies').fill('1'); await p.getByLabel('Seconds between replies').press('Tab');
@@ -231,6 +242,11 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         await p.getByRole('button', { name: 'Use this scene' }).click();
         await p.locator('.gs-dialog').waitFor({ state: 'detached' });
         check('Scene adaptation does not receive private character rules', await p.evaluate(() => gsCalls.filter(c => c.messages[0].content.startsWith('Adapt character')).every(c => !JSON.stringify(c).includes('PRIVATE_OVERRIDE_FERN'))));
+        check('Scene adaptation includes every cast identity even when source setups are missing', await p.evaluate(() => {
+            const call = gsCalls.find(c => c.messages[0].content.startsWith('Adapt character'));
+            const payload = JSON.parse(call.messages[1].content);
+            return payload.requiredCast.includes('Mira') && payload.requiredCast.includes('Jonah') && payload.cast.find(c => c.name === 'Mira').description.includes('meeting Alex') && payload.cast.find(c => c.name === 'Jonah').description.includes('restaurant manager') && call.messages[0].content.includes('Name every cast member');
+        }));
         await p.getByRole('tab', { name: 'Story', exact: true }).click();
         check('Reviewed adaptation becomes a shared scene change', (await p.locator('[data-field=scene]').inputValue()).includes('unfinished business') && (await p.locator('.gs-event').last().innerText()).includes('SCENE CHANGE'));
         const jonah = p.locator('.gs-live-person').filter({ hasText: 'Jonah' });
@@ -253,6 +269,7 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Speak as character records a contribution without a model request', await p.evaluate(() => gsCalls.length) === callsBeforeManual);
         const nativeName = await p.evaluate(() => SillyTavern.getContext().name1);
         await p.getByRole('tab', { name: 'Setup', exact: true }).click();
+        await p.locator('[data-setup-nav=cast]').click();
         await p.getByLabel('Your user persona').selectOption('gs-test-alex.png');
         await p.waitForFunction(() => document.querySelector('[data-field=mode]').value === 'talk' && document.querySelector('[data-persona-summary]').textContent.includes('Alex'));
         check('Existing SillyTavern persona can join without changing the host persona', (await p.locator('[data-field=mode]').inputValue()) === 'talk' && (await p.locator('[data-persona-summary]').innerText()).includes('Alex') && await p.evaluate(() => SillyTavern.getContext().name1) === nativeName);
@@ -280,6 +297,12 @@ const check = (name, value) => { assert.ok(value, name); results.push(name); con
         check('Mobile workspace stays within viewport width', await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
         await p.screenshot({ path: path.join(out, 'group-stories-mobile.png') });
         await chooseCharacter(p, 'Mira');
+        check('Mobile Setup navigation and cast section fit the screen', await p.locator('.gs-setup-nav').isVisible() && await p.locator('.gs-setup-content').evaluate(e => e.scrollWidth <= e.clientWidth));
+        await p.screenshot({ path: path.join(out, 'group-stories-mobile-setup.png') });
+        await p.locator('[data-setup-nav=scene]').click();
+        check('Mobile scene fields open at the top within the content area', await p.locator('[data-field=scene]').isVisible() && await p.locator('.gs-setup-content').evaluate(e => e.scrollWidth <= e.clientWidth && e.scrollTop === 0));
+        await p.screenshot({ path: path.join(out, 'group-stories-mobile-scene.png') });
+        await p.locator('[data-setup-nav=cast]').click();
         check('Mobile character picker searches and selects a portrait without horizontal overflow', await p.locator('#select2-gs-library-container img').count() === 1 && await p.locator('#group-stories-workspace').evaluate(e => e.scrollWidth <= 390));
         await p.getByRole('button', { name: 'Read Mira character card', exact: true }).click();
         check('Read-only character card is accessible at phone width', await p.locator('.gs-character-card').isVisible() && await p.locator('.gs-character-card').evaluate(e => e.getBoundingClientRect().width <= 390));

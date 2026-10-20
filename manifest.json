@@ -6,7 +6,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Group Stories contributors",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minimum_client_version": "1.19.0",
   "auto_update": false
 }

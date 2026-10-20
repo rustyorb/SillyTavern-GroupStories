@@ -154,3 +154,102 @@
     .gs-library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); max-height:330px; }
     .gs-character-setup { padding:10px; }
 }
+
+/* Focused setup navigation and a compact, consistent reading scale. */
+.gs-workspace { --gs-bg:#191c21; --gs-panel:#24282f; --gs-line:#454b55; --gs-text:#f0f1f3; --gs-muted:#bcc2cc; font-size:14px; max-width:1320px; margin-inline:auto; border-radius:10px; }
+.gs-header { padding:10px 18px; gap:12px; }
+.gs-header input { font-size:21px; }
+.gs-toolbar button { font-size:12px; padding:6px 10px; }
+.gs-tabs { padding:0 18px; gap:18px; background:var(--gs-bg); }
+.gs-tabs button { border:0; border-bottom:3px solid transparent; border-radius:0; min-width:74px; padding:10px 6px; color:var(--gs-muted); }
+.gs-tabs [aria-selected=true] { border-color:var(--gs-accent); background:transparent; color:var(--gs-text); font-weight:700; }
+.gs-controls { padding:8px 18px; gap:6px; background:#24282f; }
+.gs-controls label { font-size:12px; margin-left:6px; gap:5px; }
+.gs-controls input { width:55px; padding:6px; }
+.gs-controls button { font-size:13px; padding:6px 10px; }
+.gs-controls small { font-size:10px; }
+.gs-controls [data-status] { font-size:11px; }
+.gs-workspace input,.gs-workspace textarea,.gs-workspace select { background:#1a1e24; border-color:#626b79; }
+.gs-workspace input::placeholder,.gs-workspace textarea::placeholder { color:#979fac; opacity:1; }
+.gs-workspace h2 { font-size:17px; margin-bottom:14px; }
+.gs-prep-layout { display:grid; grid-template-columns:174px minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto; background:var(--gs-bg); }
+.gs-setup-nav { display:flex; flex-direction:column; gap:5px; padding:22px 10px; border-right:1px solid var(--gs-line); background:#1e2228; }
+.gs-nav-heading { font-size:11px; color:var(--gs-muted); padding:0 10px 12px; }
+.gs-setup-nav button { background:transparent; border-color:transparent; text-align:left; font-size:13px; padding:10px; }
+.gs-setup-nav [aria-pressed=true] { background:#3b352d; border-color:#a17e58; color:#f5d4ac; font-weight:650; }
+.gs-setup-content { min-width:0; min-height:0; overflow:auto; padding:22px clamp(16px,2.5vw,36px); }
+.gs-prep-layout .gs-cast,.gs-prep-layout .gs-directing,.gs-files { padding:0; border:0; background:transparent; overflow:visible; margin:0 auto; max-width:960px; }
+.gs-prep-layout .gs-directing,.gs-files { max-width:720px; margin-left:0; }
+.gs-setup-reminder { grid-column:1/-1; padding:8px 18px; background:#1e2228; border-top:1px solid var(--gs-line); border-bottom:0; font-size:11px; }
+.gs-persona-box { max-width:620px; margin-bottom:22px; }
+.gs-persona-label { font-size:14px; font-weight:650; margin-bottom:8px; }
+.gs-persona-label select { font-size:14px; font-weight:400; }
+.gs-persona-summary { margin-bottom:0; font-size:12px; }
+.gs-cast-grid { display:grid; grid-template-columns:minmax(220px,300px) minmax(0,1fr); gap:24px; align-items:start; }
+.gs-library-browser { border:0; padding:0; }
+.gs-library-browser h2 { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.gs-library-tools { display:grid; grid-template-columns:1fr; gap:8px; }
+.gs-library-tools select { width:100%; }
+.gs-library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-height:440px; padding:2px; }
+.gs-library-tile { padding:9px; background:var(--gs-panel); border-radius:6px; }
+.gs-library-portrait img { width:72px; height:90px; border-radius:4px; }
+.gs-library-portrait strong { font-size:12px; }
+.gs-quick-picker { border-top:1px solid var(--gs-line); margin-top:14px; padding-top:12px; font-size:12px; }
+.gs-quick-picker summary { font-weight:400; }
+.gs-quick-picker>button { width:100%; margin-top:8px; }
+.gs-roster { min-width:0; }
+.gs-person { padding:16px; margin-bottom:14px; border:1px solid var(--gs-line); border-radius:7px; background:var(--gs-panel); }
+.gs-person-heading { margin-bottom:12px; }
+.gs-person-heading strong { font-size:16px; }
+.gs-character-setup { border:0; padding:12px 0 0; margin:8px 0; background:transparent; border-top:1px solid var(--gs-line); border-radius:0; }
+.gs-character-setup label { font-weight:650; }
+.gs-character-setup textarea { font-weight:400; }
+.gs-character-setup small { font-size:12px; line-height:1.5; }
+.gs-character-setup>.gs-primary { font-size:12px; padding:7px 10px; }
+.gs-workspace summary { margin-bottom:8px; }
+.gs-directing label { margin:18px 0 8px; font-size:14px; font-weight:650; }
+.gs-directing label textarea,.gs-directing label select,.gs-directing label input { font-weight:400; }
+.gs-directing label textarea { min-height:96px; }
+.gs-directing label input { max-width:140px; }
+.gs-directing label select { max-width:420px; }
+.gs-directing small,.gs-files small { font-size:12px; }
+.gs-directing button { width:auto; margin:12px 0; }
+.gs-files p { max-width:58ch; color:var(--gs-muted); }
+.gs-files button { display:block; min-width:220px; margin:10px 0; text-align:left; }
+.gs-files small { display:block; margin-top:18px; color:var(--gs-muted); }
+.gs-transcript { padding:24px clamp(16px,3vw,40px); }
+.gs-event { max-width:680px; margin-bottom:20px; }
+.gs-event p { line-height:1.65; }
+.gs-event small { letter-spacing:.03em; font-size:11px; }
+.gs-live { padding:16px; }
+.gs-composer { padding:12px 18px; }
+@media(max-width:1050px) {
+    .gs-prep-layout { grid-template-columns:154px minmax(0,1fr); }
+    .gs-cast-grid { grid-template-columns:minmax(180px,220px) minmax(0,1fr); gap:16px; }
+    .gs-setup-nav { padding-inline:6px; }
+}
+@media(max-width:800px) {
+    .gs-workspace { border-radius:0; }
+    .gs-header { padding:8px 12px; }
+    .gs-header input { font-size:19px; }
+    .gs-toolbar button { padding:5px 8px; }
+    .gs-tabs { padding-inline:12px; }
+    .gs-tabs button { padding-block:8px; }
+    .gs-controls { padding:7px 10px; }
+    .gs-controls label { margin-left:0; }
+    .gs-controls small { display:none; }
+    .gs-prep-layout { display:flex; flex-direction:column; overflow:hidden; }
+    .gs-setup-nav { flex-direction:row; flex-shrink:0; padding:8px 10px; gap:4px; border-right:0; border-bottom:1px solid var(--gs-line); }
+    .gs-nav-heading { display:none; }
+    .gs-setup-nav button { flex:1; font-size:12px; padding:8px 5px; text-align:center; }
+    .gs-setup-content { flex:1; padding:16px 12px; }
+    .gs-cast-grid { display:flex; flex-direction:column; gap:24px; }
+    .gs-library-browser,.gs-roster { width:100%; }
+    .gs-library-grid { grid-template-columns:repeat(auto-fill,minmax(105px,1fr)); max-height:230px; }
+    .gs-library-tools { grid-template-columns:minmax(0,1fr) 140px; }
+    .gs-setup-reminder { flex-shrink:0; padding:7px 12px; font-size:10px; }
+    .gs-persona-box { margin-bottom:20px; }
+    .gs-person { padding:12px; }
+    .gs-live { padding:8px 10px; }
+    .gs-composer { padding:10px 12px; }
+}

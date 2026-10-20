@@ -12,6 +12,20 @@ export function newSession(participant = null) {
         directorProfile: '', nextSpeaker: '', mode: 'talk', target: '', turnLimit: 10, maxTokens: 450,
         replyDelay: 5, participant, sharedRules: '' };
 }
+
+// Scene adaptation sees public identity/source material, never private character rules.
+export function adaptationPrompt(session) {
+    const count = Math.max(1, session.cast.length);
+    const budget = Math.min(3200, Math.floor(48000 / count));
+    const excerpt = (text, share) => {
+        const value = String(text || '').trim(); const limit = Math.floor(budget * share);
+        return value.length <= limit ? value : value.slice(0, limit) + ' [excerpt]';
+    };
+    return [{ role: 'system', content: `Adapt character source material into ONE coherent grounded contemporary human ensemble scene. ${session.participant ? `The human plays ${session.participant.name}; include them in the premise but do not decide their actions.` : 'No user protagonist.'}
+No fantasy, magic or RPG mechanics. Preserve the chosen current scene and shared facts; use source setups only to fill gaps compatibly. Shared facts override conflicting card assumptions. Effective description/personality take precedence over old source scenarios/greetings.
+Give EVERY listed cast member a concrete, plausible reason to be in this shared situation. Name every cast member in the premise and show what brings them together. No card is the default protagonist or host: longer source text, source order, or a greeting addressed to the user does not give that character extra weight. A character without a source scenario/greeting still has equal standing; use their description/personality. Do not invent established relationships merely because a greeting assumes one.
+First consider each member's identity and possible role, then synthesize a shared premise. Treat greetings as optional inspiration; never concatenate them or transplant one card's entire private scenario onto the group. Return only the concise shared premise, no analysis, dialogue, or events already happening. The human reviews it before use.` }, { role: 'user', content: JSON.stringify({ currentScene: session.scene, sharedRules: session.sharedRules, participant: session.participant, requiredCast: session.cast.map(c => c.name), cast: session.cast.map(c => ({ name: c.name, description: excerpt(c.description, .4), personality: excerpt(c.personality, .2), scenario: excerpt(c.originalScenario, .2), greeting: excerpt(c.originalGreeting, .2) })) }) }];
+}
 export const IDENTITY_FIELDS = ['description', 'personality', 'examples'];
 export function upgradeCharacter(character) {
     if (!character || typeof character !== 'object') return character;

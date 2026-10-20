@@ -1,5 +1,9 @@
 # Group Stories design
 
+Setup uses focused Cast & characters, Scene & direction, and Save & export sections with a single scrollable content area. Library browsing and story character settings sit beside each other on desktop and stack on phones. Section navigation retains draft form nodes and starts each newly selected section at the top.
+
+Scene adaptation includes every cast member's effective description/personality and bounded source scenario/greeting excerpts. Every card gets the same field limits; the combined cast budget scales down for large casts. Shared facts and the chosen scene take precedence. The prompt requests a concrete role for every named cast member without choosing a protagonist from source order or length. It never receives private character rules or reset baselines. The human reviews and may edit the draft before applying it.
+
 The direction is a separate installer-ready SillyTavern extension and repository, for contemporary human ensemble stories. As of v0.2.0, participation with an existing SillyTavern persona is the default for new stories; narrator-only observation remains available. The workspace has cast and per-character profiles, a central transcript, a collapsible scene/directing panel and a direction composer. Play, Pause, Next turn, reply interval and generation/countdown status remain visible. Character cards retain their source scenario/greeting separately from the story-owned scene and opening, with a read-only card viewer.
 
 ## Boundaries

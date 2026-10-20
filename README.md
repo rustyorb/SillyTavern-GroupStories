@@ -12,7 +12,7 @@ Chat as yourself in the story, step in as narrator, privately influence one char
 
 *The workspace running in local SillyTavern 1.19. Cast and story areas start empty so you can bring your own people and premise.*
 
-![Setup with a portrait library, persona and shared scene controls](docs/images/setup.png)
+![Setup with focused navigation, portrait library and character settings](docs/images/setup.png)
 
 *Story is for the conversation. Setup is for choosing people and deciding who they are in this particular story.*
 
@@ -64,12 +64,14 @@ Version **0.2.0** adds personas, reply pacing and readable character cards. New 
 
 Version **0.3.0** separates **Story** and **Setup**, adds a larger sortable library browser, and gives each cast member private story rules and editable story-local identity fields. Existing stories keep their identities and receive an imported reset baseline from the saved character snapshot. Library cards are never rewritten.
 
+Version **0.3.1** makes Setup easier to navigate with **Cast & characters**, **Scene & direction**, and **Save & export** sections. Character browsing sits beside story copies, scene fields have a comfortable reading width, and the quick picker is tucked away until needed. Scene adaptation now includes every character's effective description/personality, caps each card's source excerpts equally, and asks for a concrete place for everyone in the shared premise. Review the generated draft before applying it; model output can still need adjustment.
+
 ## Start a story
 
-1. Open **Setup**. Under **You in the story**, choose your SillyTavern persona, or select **Observe as narrator**. The selection applies to this story without switching your main SillyTavern persona. Your selected name and public persona description become part of character context.
+1. Open **Setup → Cast & characters**. Under **You in the story**, choose your SillyTavern persona, or select **Observe as narrator**. The selection applies to this story without switching your main SillyTavern persona. Your selected name and public persona description become part of character context.
 2. Browse the library with larger portraits, search and sorting by name, recently added or favorites. Click a portrait to inspect a library card and **+ Add** to make a story copy. The searchable quick picker is also available.
 3. Select a connection profile under each cast member. Add **For this story…** rules or optionally edit the copied description, personality and examples, then click **Save character setup**. Connections are independent of your main SillyTavern connection.
-4. Write the shared scene, **Shared story facts**, and optional opening. Original character greetings are not inserted. **Adapt original setups…** can draft a premise for review using your persona and shared facts; it does not receive private character rules. This makes a request using the director or first configured character profile.
+4. Under **Scene & direction**, write the shared scene, **Shared story facts**, and optional opening. Original character greetings are not inserted. **Adapt original setups…** can draft an ensemble premise for review using everyone's identity, your persona and shared facts; it does not receive private character rules. This makes a request using the director or first configured character profile.
 5. Return to **Story**. Use **Chat as me → Send & reply** to post your message and request one response. Sending during an automatic run stops that run, discards any in-flight stale reply, and starts one response to your new message.
 6. Press **Next turn** for one contribution or **Play** for the selected number of turns. Run `0` turns to continue until paused. **Between replies** controls the delay between automatic replies; Next turn and the first reply start immediately. Pause cancels the countdown immediately. A delay change applies to the next interval, not an interval already counting down.
 7. Switch the composer to **Narrate** for shared events, **Privately influence** for one character's motivation or knowledge, or **Speak as character** to write an AI cast member's contribution yourself. The mode and recipient are remembered per story.

@@ -1,6 +1,6 @@
 import { getCurrentUserHandle } from '../../../user.js';
 import { user_avatar } from '../../../personas.js';
-import { addEvent, importCharacter, newSession, validateSession, speakerName } from './core.js';
+import { addEvent, importCharacter, newSession, validateSession, speakerName, adaptationPrompt } from './core.js';
 import { StoryEngine } from './engine.js';
 import { createStore } from './storage.js';
 import { createCoordinator } from './coordinator.js';
@@ -29,6 +29,15 @@ function switchTab(view) {
     $('[data-setup-panel]').hidden = view !== 'setup';
     for (const tab of root.querySelectorAll('[role=tab]')) { tab.setAttribute('aria-selected', String(tab.dataset.tab === view)); tab.tabIndex = tab.dataset.tab === view ? 0 : -1; }
     if (view === 'setup') preparation?.renderLibrary();
+}
+function switchSetup(section) {
+    const changed = root.dataset.setup !== section;
+    const picker = jQuery($('[data-library]'));
+    if (picker.hasClass('select2-hidden-accessible')) picker.select2('close');
+    root.dataset.setup = section;
+    for (const panel of root.querySelectorAll('[data-setup-section]')) panel.hidden = panel.dataset.setupSection !== section;
+    for (const button of root.querySelectorAll('[data-setup-nav]')) button.setAttribute('aria-pressed', String(button.dataset.setupNav === section));
+    if (changed && $('.gs-setup-content')) $('.gs-setup-content').scrollTop = 0;
 }
 async function addLibraryCharacter(avatar) {
     const index = context().characters.findIndex(c => c.avatar === avatar);
@@ -225,10 +234,11 @@ async function adapt() {
         channel.postMessage({ type: 'status', text: statusText });
         const sourceId = session.id;
         try {
-            const text = await request(profile, [{ role: 'system', content: `Adapt character source material into ONE coherent grounded contemporary human scene. ${session.participant ? `The human plays ${session.participant.name}; include them in the premise but do not decide their actions.` : 'No user protagonist.'} No fantasy, magic or RPG mechanics. Keep recognizable character identities. Shared story facts override conflicting original scenarios and greetings. Treat original greetings as inspiration, never concatenate them. Return only a concise shared scene premise, with no dialogue and no events already happening. The human will review it before use.` }, { role: 'user', content: JSON.stringify({ currentScene: session.scene, sharedRules: session.sharedRules, participant: session.participant, cast: session.cast.map(c => ({ name: c.name, scenario: c.originalScenario, greeting: c.originalGreeting })) }) }], 600, adaptationController.signal);
+            const text = await request(profile, adaptationPrompt(session), Math.min(2400, 500 + session.cast.length * 80), adaptationController.signal);
             await lock.assertHeld?.();
             if (adaptationController.signal.aborted) { statusText = 'Paused. Scene draft discarded.'; return; }
             const dialog = el('dialog', 'gs-dialog'); dialog.append(el('h2', '', 'Review your adapted scene'), el('p', '', 'Edit this freely. It becomes shared scene information only when you use it.'));
+            dialog.append(el('p', 'gs-muted', `Check that everyone has a place: ${session.cast.map(c => c.name).join(', ')}.`));
             const draft = el('textarea'); draft.value = text; draft.rows = 10; dialog.append(draft);
             const apply = el('button', 'gs-primary', 'Use this scene');
             apply.onclick = guarded(async () => {
@@ -271,12 +281,40 @@ function mount() {
     const nextSpeaker = $('[data-field="nextSpeaker"]').closest('label'); live.prepend(nextSpeaker); storyPanel.append(live);
     const shared = el('label', '', 'Shared story facts'); const sharedInput = el('textarea'); sharedInput.dataset.field = 'sharedRules'; sharedInput.rows = 5; sharedInput.maxLength = 24000;
     sharedInput.setAttribute('aria-label', 'Shared story facts'); sharedInput.placeholder = 'Facts everyone should know: Alex and Mira have never met. This is their first conversation.';
+    sharedInput.rows = 3;
+    $('[data-field="scene"]').rows = 4; $('[data-field="opening"]').rows = 3;
     shared.append(sharedInput); $('[data-field="scene"]').closest('label').after(shared);
     const reminder = el('p', 'gs-setup-reminder', 'Changes apply to the next reply. Existing messages remain as written. Each story has its own character copies; your library cards stay unchanged.'); setupPanel.prepend(reminder);
     preparation = createPreparation({ root, getSession: () => session, context, change, notify, saved: text => { statusText = text; renderStatus(); },
         addCharacter: addLibraryCharacter,
         inspect: async avatar => { const index = context().characters.findIndex(c => c.avatar === avatar); if (index < 0) throw new Error('Character is no longer in your library.'); await context().unshallowCharacter(index); showCharacterCard(importCharacter(context().characters[index]), true); },
     });
+    // Setup follows the task at hand instead of spreading unrelated forms across the window.
+    const setupNav = el('nav', 'gs-setup-nav'); setupNav.setAttribute('aria-label', 'Setup sections');
+    setupNav.innerHTML = '<span class="gs-nav-heading">Prepare your story</span><button data-setup-nav="cast" aria-controls="gs-prepare-cast">Cast & characters</button><button data-setup-nav="scene" aria-controls="gs-prepare-scene">Scene & direction</button><button data-setup-nav="files" aria-controls="gs-prepare-files">Save & export</button>';
+    const setupContent = el('div', 'gs-setup-content');
+    const castSection = $('.gs-cast'); castSection.dataset.setupSection = 'cast'; castSection.id = 'gs-prepare-cast';
+    const sceneSection = $('.gs-directing'); sceneSection.dataset.setupSection = 'scene'; sceneSection.id = 'gs-prepare-scene';
+    const storage = $('.gs-storage');
+    const filesSection = el('section', 'gs-files'); filesSection.dataset.setupSection = 'files'; filesSection.id = 'gs-prepare-files';
+    const filesTitle = el('h2', '', 'Save & export'); storage.querySelector('summary').remove();
+    filesSection.append(filesTitle, ...storage.childNodes); storage.remove();
+    const sceneDetails = sceneSection.querySelector('details');
+    sceneDetails.querySelector('summary').remove(); sceneSection.prepend(el('h2', '', 'Scene & direction'));
+    sceneDetails.replaceWith(...sceneDetails.childNodes);
+    const personaBox = el('section', 'gs-persona-box');
+    personaBox.append($('.gs-persona-label'), $('[data-persona-summary]'));
+    const castGrid = el('div', 'gs-cast-grid');
+    const library = $('.gs-library-browser'); const roster = el('section', 'gs-roster');
+    roster.append($('.gs-cast-title'), $('[data-cast]'));
+    const quick = el('details', 'gs-quick-picker'); quick.append(el('summary', '', 'Quick character picker'), $('label[for="gs-library"]'), $('[data-library]'), $('[data-action="add"]'));
+    library.append(quick); library.querySelector('h2').append($('[data-action="refresh-library"]'));
+    $('.gs-section-heading').remove();
+    castGrid.append(library, roster); castSection.append(personaBox, castGrid);
+    reminder.textContent = 'Your library cards stay unchanged. Setup changes apply to upcoming replies.';
+    setupContent.append(castSection, sceneSection, filesSection);
+    setupPanel.replaceChildren(setupNav, setupContent, reminder);
+    switchSetup('cast');
     switchTab('story');
     root.querySelectorAll('button').forEach(button => button.type = 'button');
     root.querySelector('[type="submit"]')?.setAttribute('type', 'submit');
@@ -336,6 +374,8 @@ function mount() {
         }
     }));
     root.addEventListener('click', guarded(async event => {
+        const setupSection = event.target.closest('[data-setup-nav]')?.dataset.setupNav;
+        if (setupSection) { switchSetup(setupSection); return; }
         const tab = event.target.closest('[data-tab]')?.dataset.tab;
         if (tab) { switchTab(tab); return; }
         const action = event.target.closest('[data-action]')?.dataset.action;

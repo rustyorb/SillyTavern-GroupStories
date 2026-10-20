@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession, speakerName, upgradeSession, resetStoryIdentity } from '../core.js';
 import { sortLibrary } from '../preparation.js';
+import { adaptationPrompt } from '../core.js';
 import { StoryEngine } from '../engine.js';
 
 function story() {
@@ -9,6 +10,28 @@ function story() {
     s.cast = ['Alice', 'Bea', 'Cole'].map(name => ({ ...importCharacter({ name, avatar: `${name}.png` }), profile: 'local' }));
     return s;
 }
+
+test('adaptation represents sparse cards using effective identity and bounds long sources equally', () => {
+    const s = story();
+    s.sharedRules = 'Everyone is meeting for the first time.';
+    s.cast[0].originalScenario = 'LONG_SOURCE'.repeat(2000);
+    s.cast[0].originalGreeting = 'LONG_GREETING'.repeat(2000);
+    s.cast[1].description = 'A quiet mechanic looking for work.';
+    s.cast[1].personality = 'Patient and observant.';
+    s.cast[1].storyRules = 'PRIVATE_RULE';
+    s.cast[1].importedIdentity.description = 'OLD_IDENTITY';
+    const messages = adaptationPrompt(s); const payload = JSON.parse(messages[1].content);
+    assert.deepEqual(payload.requiredCast, ['Alice', 'Bea', 'Cole']);
+    assert.equal(payload.cast[1].description, s.cast[1].description);
+    assert.equal(payload.cast[1].personality, s.cast[1].personality);
+    assert.ok(payload.cast[0].scenario.length < 700 && payload.cast[0].greeting.length < 700);
+    assert.equal(payload.sharedRules, s.sharedRules);
+    assert.ok(!JSON.stringify(messages).includes('PRIVATE_RULE'));
+    assert.ok(!JSON.stringify(messages).includes('OLD_IDENTITY'));
+    assert.match(messages[0].content, /Name every cast member/);
+    assert.match(messages[0].content, /longer source text/);
+    assert.match(messages[0].content, /Preserve the chosen current scene/);
+});
 test('IDs remain unique v4 UUIDs when insecure HTTP does not expose randomUUID', () => {
     const descriptor = Object.getOwnPropertyDescriptor(globalThis.crypto, 'randomUUID');
     try {

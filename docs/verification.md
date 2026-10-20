@@ -1,5 +1,15 @@
 # Verification history
 
+## v0.3.1 — Focused navigation and ensemble scene adaptation — 2026-10-20
+
+Setup has separate Cast & characters, Scene & direction, and Save & export sections. The library and story character settings share a bounded two-column layout; scene fields use their own readable form width. The secondary quick picker is collapsed, the header and spacing are more compact, and fields/placeholders have clearer contrast. Phone layouts use horizontal section navigation and stacked content. Changing sections starts at the top of the selected form.
+
+The adaptation request previously supplied original scenarios/greetings only, leaving sparse cards without useful identity context. It now includes each character's effective description/personality, an explicit required-cast list, equal per-field excerpt limits for every card, and instructions to give every member a concrete role without selecting a protagonist from source length/order. Current scene and shared facts take precedence. Output allowance scales with cast size. The review dialog lists everyone to check before applying. Private character rules, imported reset baselines and conversation history are excluded. This improves input balance and guidance; it cannot guarantee model compliance.
+
+Node verification: **25 tests passed**. The adaptation regression uses a very long source card beside a sparse card, checks equal source limits and effective identity fallback, and confirms private rules/baselines are omitted.
+
+Browser verification: **67 checks passed** on ordinary HTTP mapped only to the dedicated local SillyTavern, using desktop and 390px phone viewports. Checks include section visibility/selection, readable scene width, collapsed secondary picker, mobile content bounds and section scroll position, plus the existing privacy, persona, playback, card editing, backup and coordination flows. The adaptation payload contains both characters' effective identities, including a character with no source setup. No Group Stories runtime errors or unexpected console errors. Provider responses were simulated; real-model adaptation quality and the user's headless instance were not tested.
+
 ## v0.3.0 — Story/Setup views and story-local characters — 2026-10-19
 
 The approved design separates conversation and live directing from preparation. Story contains transcript/composer, compact portrait/presence/influence controls and next-speaker selection. Setup contains the larger library browser with name/recent/favorite sorting, persona, profiles, shared scene/facts, character rules and optional local identity edits. Playback controls stay available in either view. The tabs do not start generation or change saved story state.
