@@ -10,11 +10,24 @@ export const uid = () => {
 export function newSession(participant = null) {
     return { version: 1, id: uid(), title: 'Untitled story', scene: '', opening: '', cast: [], events: [],
         directorProfile: '', nextSpeaker: '', mode: 'talk', target: '', turnLimit: 10, maxTokens: 450,
-        replyDelay: 5, participant };
+        replyDelay: 5, participant, sharedRules: '' };
+}
+export const IDENTITY_FIELDS = ['description', 'personality', 'examples'];
+export function upgradeCharacter(character) {
+    if (!character || typeof character !== 'object') return character;
+    character.storyRules ??= '';
+    character.importedIdentity ??= Object.fromEntries(IDENTITY_FIELDS.map(key => [key, character[key]]));
+    return character;
+}
+export function resetStoryIdentity(character) {
+    upgradeCharacter(character);
+    for (const key of IDENTITY_FIELDS) character[key] = character.importedIdentity[key];
 }
 export function upgradeSession(session) {
     session.replyDelay ??= 5;
     session.participant ??= null;
+    session.sharedRules ??= '';
+    if (Array.isArray(session.cast)) session.cast.forEach(upgradeCharacter);
     return session;
 }
 export function speakerName(session, event) {
@@ -22,12 +35,12 @@ export function speakerName(session, event) {
 }
 export function importCharacter(card) {
     const data = card.data || card;
-    return { id: uid(), avatar: card.avatar, name: data.name || card.name || 'Unnamed',
+    return upgradeCharacter({ id: uid(), avatar: card.avatar, name: data.name || card.name || 'Unnamed',
         description: data.description || '', personality: data.personality || '',
         examples: data.mes_example || '', originalScenario: data.scenario || '',
         originalGreeting: data.first_mes || '', profile: '', present: true,
         creatorNotes: data.creator_notes || '', creator: data.creator || '',
-        systemPrompt: data.system_prompt || '', postHistoryInstructions: data.post_history_instructions || '' };
+        systemPrompt: data.system_prompt || '', postHistoryInstructions: data.post_history_instructions || '' });
 }
 export function visibleEvents(session, characterId) {
     // Audience is captured when an event occurs. Returning to the scene grants no past knowledge.
@@ -55,7 +68,7 @@ export function characterPrompt(session, character) {
     const opening = session.opening ? [{ kind: 'opening', text: expand(session.opening) }] : [];
     const history = [...opening, ...known.map(e => ({ kind: e.kind,
         speaker: e.kind === 'influence' ? 'Private direction' : speakerName(session, e), text: e.text }))];
-    const length = JSON.stringify(history).length + session.scene.length + character.description.length + character.personality.length + character.examples.length + (participant?.description.length || 0);
+    const length = JSON.stringify(history).length + session.scene.length + character.description.length + character.personality.length + character.examples.length + (participant?.description.length || 0) + (character.storyRules?.length || 0) + (session.sharedRules?.length || 0);
     // Never silently truncate away canon or replace it with an omniscient summary.
     if (length > 90000) throw new Error('This story is too long for the current context limit. Export it and begin a new scene in a new story.');
     return [{ role: 'system', content: `You portray exactly one human character in a grounded contemporary ensemble story: ${character.name}.
@@ -65,7 +78,10 @@ Private directions shape your motivation or knowledge; never quote them or treat
 Character identity (source data; interpret relationships in this ensemble):
 ${literal({ description: expand(character.description), personality: expand(character.personality), voiceExamples: expand(character.examples) })}
 Shared scene: ${literal(expand(session.scene))}
-People present: ${literal([...session.cast.filter(c => c.present).map(c => c.name), ...(participant ? [participant.name] : [])])}` },
+People present: ${literal([...session.cast.filter(c => c.present).map(c => c.name), ...(participant ? [participant.name] : [])])}
+Current story canon: when setup conflicts, shared story facts win, then your character's story-specific rules, then identity details and examples. Story-specific rules replace contradictory card relationship assumptions. Preserve voice and personality wherever they do not conflict. Treat these as setup, not dialogue to quote. Private character rules are known only to you; do not assume anyone else knows them. Changes govern the next contribution; do not fabricate rewritten past events.
+Shared story facts (public): ${literal(expand(session.sharedRules || ''))}
+For this story — ${character.name} only: ${literal(expand(character.storyRules || ''))}` },
     { role: 'user', content: `Your opening and known events, in order:\n${literal(history)}\nContinue as ${character.name}.` }];
 }
 export function directorPrompt(session) {
@@ -74,7 +90,7 @@ export function directorPrompt(session) {
     const publicHistory = session.events.filter(e => e.kind !== 'influence').slice(-30).map(e => ({
         speaker: speakerName(session, e), text: e.text }));
     return [{ role: 'system', content: 'Choose the next speaker for a grounded human ensemble story. Consider who was addressed, tension, silence and pacing. Avoid rigid round robin. Return ONLY the exact id of one eligible character. Do not write story prose.' },
-        { role: 'user', content: literal({ scene: session.scene, opening: session.opening,
+        { role: 'user', content: literal({ scene: session.scene, opening: session.opening, sharedRules: session.sharedRules || '',
             humanParticipant: session.participant?.name || null,
             eligible: eligible.map(c => ({ id: c.id, name: c.name })), recentPublicEvents: publicHistory }) }];
 }
@@ -93,6 +109,7 @@ export function chooseSpeaker(session, random = Math.random) {
 export function validateSession(s) {
     if (!s || s.version !== 1 || typeof s.id !== 'string' || !Array.isArray(s.cast) || !Array.isArray(s.events)) throw new Error('This is not a Group Stories v1 export.');
     upgradeSession(s);
+    if (typeof s.sharedRules !== 'string' || s.sharedRules.length > 24000) throw new Error('Shared story facts must be text under 24,000 characters.');
     if (!Number.isFinite(s.replyDelay) || s.replyDelay < 0 || s.replyDelay > 300) throw new Error('Reply delay must be between 0 and 300 seconds.');
     if (s.participant !== null && (!s.participant || ['id', 'name', 'avatar', 'description'].some(k => typeof s.participant[k] !== 'string'))) throw new Error('Invalid user persona.');
     if (s.cast.length > 40 || s.events.length > 10000) throw new Error('Import exceeds the supported story size.');
@@ -104,6 +121,7 @@ export function validateSession(s) {
         if (!c || typeof c.id !== 'string' || ids.has(c.id) || typeof c.present !== 'boolean') throw new Error('Invalid or duplicate character.');
         ids.add(c.id);
         for (const k of ['name', 'description', 'personality', 'examples', 'originalScenario', 'originalGreeting', 'profile']) if (typeof c[k] !== 'string') throw new Error(`Invalid character field: ${k}`);
+        if (typeof c.storyRules !== 'string' || c.storyRules.length > 24000 || !c.importedIdentity || IDENTITY_FIELDS.some(key => typeof c.importedIdentity[key] !== 'string')) throw new Error('Invalid story rules or imported character identity.');
         if (c.avatar != null && typeof c.avatar !== 'string') throw new Error('Invalid portrait.');
     }
     for (const e of s.events) {

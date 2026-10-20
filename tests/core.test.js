@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession, speakerName, upgradeSession } from '../core.js';
+import { uid, newSession, importCharacter, addEvent, characterPrompt, directorPrompt, visibleEvents, chooseSpeaker, validateSession, speakerName, upgradeSession, resetStoryIdentity } from '../core.js';
+import { sortLibrary } from '../preparation.js';
 import { StoryEngine } from '../engine.js';
 
 function story() {
@@ -151,4 +152,43 @@ test('pause releases run ownership even when a provider never resolves', async (
     const h = harness(async () => { entered(); return new Promise(() => {}); });
     const run = h.engine.run(1); await started; h.engine.pause(); await run;
     assert.equal(h.engine.running, false); assert.equal(h.state.events.length, 0);
+});
+test('private story rules reach only their character; shared facts reach every character and director', () => {
+    const s = story(); s.sharedRules = 'PUBLIC_CANON: Alice and Bea are strangers.';
+    s.cast[0].storyRules = 'PRIVATE_OVERRIDE_FERN: Do not mention your former marriage. You do not know the user.';
+    const a = JSON.stringify(characterPrompt(s, s.cast[0])); const b = JSON.stringify(characterPrompt(s, s.cast[1])); const director = JSON.stringify(directorPrompt(s));
+    assert.match(a, /PRIVATE_OVERRIDE_FERN/); assert.doesNotMatch(b, /PRIVATE_OVERRIDE_FERN/); assert.doesNotMatch(director, /PRIVATE_OVERRIDE_FERN/);
+    for (const prompt of [a, b, director]) assert.match(prompt, /PUBLIC_CANON/);
+    assert.match(a, /shared story facts win, then your character/);
+});
+test('editing a story copy replaces prompt identity without including the imported relationship', () => {
+    const libraryCard = { name: 'Alice', description: 'ORIGINAL_ROMANCE: married to {{user}}.', personality: 'Wry.', mes_example: 'Our wedding was lovely.' };
+    const s = story(); const a = importCharacter(libraryCard); s.cast[0] = a;
+    a.description = 'A practical nurse meeting the user for the first time.'; a.examples = 'Nice to meet you.'; a.storyRules = 'We are strangers.';
+    const prompt = JSON.stringify(characterPrompt(s, a));
+    assert.doesNotMatch(prompt, /ORIGINAL_ROMANCE|wedding/); assert.match(prompt, /meeting the user/);
+    assert.equal(a.importedIdentity.description, libraryCard.description); assert.equal(libraryCard.description, 'ORIGINAL_ROMANCE: married to {{user}}.');
+    const otherStory = importCharacter(libraryCard); assert.equal(otherStory.description, libraryCard.description);
+});
+test('reset restores the imported identity without changing connection, presence or story rules', () => {
+    const c = importCharacter({ name: 'Alice', description: 'Original.', personality: 'Patient.', mes_example: 'Hello.' });
+    c.description = 'Edited.'; c.personality = 'Edited too.'; c.examples = 'New voice.'; c.profile = 'chosen'; c.present = false; c.storyRules = 'Strangers.';
+    resetStoryIdentity(c); assert.equal(c.description, 'Original.'); assert.equal(c.personality, 'Patient.'); assert.equal(c.examples, 'Hello.');
+    assert.equal(c.profile, 'chosen'); assert.equal(c.present, false); assert.equal(c.storyRules, 'Strangers.');
+});
+test('old story snapshots gain one reset baseline and rules survive backup round-trip', () => {
+    const s = story(); delete s.sharedRules; delete s.cast[0].storyRules; delete s.cast[0].importedIdentity;
+    upgradeSession(s); const baseline = s.cast[0].importedIdentity.description;
+    s.cast[0].description = 'Edited later.'; s.cast[0].storyRules = 'Only for this story.'; s.sharedRules = 'Shared facts.'; upgradeSession(s);
+    assert.equal(s.cast[0].importedIdentity.description, baseline);
+    const copy = validateSession(JSON.parse(JSON.stringify(s)));
+    assert.equal(copy.cast[0].storyRules, 'Only for this story.'); assert.equal(copy.sharedRules, 'Shared facts.'); assert.equal(copy.cast[0].importedIdentity.description, baseline);
+    copy.cast[0].storyRules = {}; assert.throws(() => validateSession(copy), /story rules/);
+    const invalid = story(); invalid.sharedRules = 42; assert.throws(() => validateSession(invalid), /Shared story facts/);
+});
+test('library sort and search honor names, creation date, and real favorite booleans', () => {
+    const cards = [{ name: 'Zoe', fav: 'false', created: 2 }, { name: 'Alice', fav: false, created: 3 }, { name: 'Bea', fav: 'true', created: 1 }];
+    assert.deepEqual(sortLibrary(cards).map(c => c.name), ['Alice', 'Bea', 'Zoe']);
+    assert.equal(sortLibrary(cards, 'reverse')[0].name, 'Zoe'); assert.equal(sortLibrary(cards, 'favorites')[0].name, 'Bea');
+    assert.equal(sortLibrary(cards, 'recent', '', c => c.created)[0].name, 'Alice'); assert.deepEqual(sortLibrary(cards, 'name', '  ALI ').map(c => c.name), ['Alice']);
 });

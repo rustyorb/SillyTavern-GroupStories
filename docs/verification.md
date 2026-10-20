@@ -1,5 +1,15 @@
 # Verification history
 
+## v0.3.0 — Story/Setup views and story-local characters — 2026-10-19
+
+The approved design separates conversation and live directing from preparation. Story contains transcript/composer, compact portrait/presence/influence controls and next-speaker selection. Setup contains the larger library browser with name/recent/favorite sorting, persona, profiles, shared scene/facts, character rules and optional local identity edits. Playback controls stay available in either view. The tabs do not start generation or change saved story state.
+
+Every story character has private `storyRules`, effective description/personality/examples, and an `importedIdentity` reset baseline. Saved field edits replace the corresponding prompt fields; the reset baseline is never injected. Shared story facts take precedence, then private character rules, then card identity/examples. The director and scene adaptation receive shared facts but not private rules. Public transcript exports omit private setup, while backups include rules, local edits and baselines. Reset restores only identity fields and preserves rules, profile, presence and history. Existing character snapshots acquire their baseline once; library cards and other stories are not edited.
+
+Node verification: **24 tests passed, 0 failed**. Tests cover recipient-only rule delivery, shared-fact inclusion, priority instructions, removal of contradictory imported text from the effective prompt, library/other-story isolation, reset boundaries, old snapshot upgrades, backup validation, and search/sort behavior, alongside the existing generation/privacy/cancellation cases. Natural-language rules are model guidance, not a deterministic guarantee; manually replacing contradictory text removes those source passages from the request.
+
+Live UI verification: **62 checks passed**, with no Group Stories runtime errors or unexpected console errors. Live validation uses only the dedicated local host, through the ordinary-HTTP hostname mapped to 127.0.0.1, at 1500×1000 and 390×844 viewports. Provider replies and test characters are simulated. The flow checks tab separation, larger filtered/sorted portraits, story-local editing and reset, private/shared prompt assembly, rules changed after chatting starts without history rewriting, backup round-trip, director/adaptation privacy, and existing user/chat/window controls. Host header/resize notices remain recorded separately from extension errors. Browser plugin is unavailable; regular Playwright is used. No real model requests or access to the user's headless instance/phone are involved.
+
 ## v0.2.0 — Reply pacing, personas and readable cards — 2026-10-19
 
 - New stories select the active SillyTavern persona; existing stories retain narrator-only participation until a persona is selected. Profiles come from the host's persona names/descriptions and are copied into the story without changing the host selection.

@@ -4,7 +4,7 @@ The direction is a separate installer-ready SillyTavern extension and repository
 
 ## Boundaries
 
-`core.js` owns pure session, audience and prompt rules. `engine.js` owns bounded/continuous generation and cancellation. `storage.js` owns browser persistence. `index.js` integrates SillyTavern and renders the workspace. `style.css` scopes the presentation. The repository contains runnable ES modules; no runtime library or build pipeline is needed.
+`core.js` owns pure session, audience, reset and prompt rules. `engine.js` owns bounded/continuous generation and cancellation. `storage.js` owns browser persistence. `index.js` integrates SillyTavern and the Story/Setup panels. `preparation.js` owns the sortable portrait browser and story-local character editors, including unsaved drafts. `style.css` scopes the presentation. The repository contains runnable ES modules; no runtime library or build pipeline is needed.
 
 The host API is read through `SillyTavern.getContext()` after APP_READY. ConnectionManagerRequestService constructs the correct prompt format and sends each character's request using its own profile. The extension never changes main connection selection, writes native chats or modifies original cards. It initializes only its own namespaced settings, never calls the global extension loader.
 
@@ -19,6 +19,14 @@ Automatic turns wait a configurable 0–300 seconds between contributions (five 
 ## Privacy and knowledge
 
 Each event captures a recipient list. Public events go to present characters; private influence goes to one character. Each character's prompt filters all history by recipient before inclusion, and includes only that character's identity. The director sees public events only. No summaries or global recall are generated. Shared scene and opening are common foundational information; private facts belong in private directions. Original greetings are shown for reference, with an optional reviewed scene-adaptation request.
+
+## Story-specific preparation (v0.3.0)
+
+Story contains the transcript, composer and compact cast/presence/influence/next-speaker controls. Setup contains persona, library browsing, character profiles and edits, shared scene/facts, opening, director and exports. Playback controls remain visible in both views. Tabs are view-local and do not create a generation loop or modify story state.
+
+Each character retains an `importedIdentity` baseline plus effective description/personality/examples, and a private `storyRules` string. Existing snapshots acquire their baseline once on upgrade. Reset copies only the three identity fields from the baseline; rules, profile, presence, history and the library remain unchanged. Character editors save explicitly, preserving unsaved drafts across rerenders and tab switches in the same view.
+
+Prompts include only effective identity fields, shared public rules, and the current recipient's private story rules. The imported baseline is never injected. Explicit precedence is shared facts, then character rules, then identity/examples. The director receives shared rules, never private character rules; scene adaptation also excludes private rules. Changes govern future requests without rewriting history. This remains natural-language model steering; manually replacing contradictory identity passages removes those exact source passages deterministically.
 
 ## First-version scope
 
